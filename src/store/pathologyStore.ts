@@ -33,6 +33,11 @@ export interface PathologyState {
   annotationLabel: AnnotationLabel
   annotations: Annotation[]
   hoveredAnnotationId: string | null
+  aiRunning: boolean
+  aiProgress: number
+  aiThreshold: number
+  aiInferenceTime: number | null
+  aiError: string | null
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -55,6 +60,11 @@ export const pathologyStore = new Store<PathologyState>({
   annotationLabel: 'Tumor',
   annotations: [],
   hoveredAnnotationId: null,
+  aiRunning: false,
+  aiProgress: 0,
+  aiThreshold: 0.45,
+  aiInferenceTime: null,
+  aiError: null,
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -114,4 +124,24 @@ export function clearAnnotations(): void {
 
 export function setHoveredAnnotation(id: string | null): void {
   pathologyStore.setState((prev) => ({ ...prev, hoveredAnnotationId: id }))
+}
+
+export function setAiRunning(v: boolean): void {
+  pathologyStore.setState((prev) => ({ ...prev, aiRunning: v }))
+}
+
+export function setAiProgress(v: number): void {
+  pathologyStore.setState((prev) => ({ ...prev, aiProgress: v }))
+}
+
+export function setAiThreshold(v: number): void {
+  pathologyStore.setState((prev) => ({ ...prev, aiThreshold: v }))
+}
+
+export function setAiInferenceTime(v: number | null): void {
+  pathologyStore.setState((prev) => ({ ...prev, aiInferenceTime: v }))
+}
+
+export function setAiError(v: string | null): void {
+  pathologyStore.setState((prev) => ({ ...prev, aiError: v }))
 }

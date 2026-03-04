@@ -7,6 +7,9 @@ import {
   addAnnotation,
   type AnnotationLabel,
 } from '../../store/pathologyStore'
+
+const RING_R = 28
+const RING_CIRC = 2 * Math.PI * RING_R
 import { setViewerInstance } from '../../lib/viewerInstance'
 import { LABEL_COLOR_MAP } from '../../lib/annotationConfig'
 
@@ -26,6 +29,8 @@ export default function PathologyViewer() {
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
   const annotations = usePathologyStore((s) => s.annotations)
   const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
+  const aiRunning = usePathologyStore((s) => s.aiRunning)
+  const aiProgress = usePathologyStore((s) => s.aiProgress)
 
   // Sync refs into OSD event handlers — avoids stale closure
   useEffect(() => { annotationModeRef.current = annotationMode }, [annotationMode])
@@ -221,6 +226,75 @@ export default function PathologyViewer() {
           </g>
         </svg>
       )}
+
+      {/* AI scanning laser + progress ring */}
+      <AnimatePresence>
+        {aiRunning && (
+          <>
+            {/* Scanning laser line — sweeps top→bottom, loops */}
+            <motion.div
+              key="laser"
+              className="absolute inset-x-0 z-20 h-[2px] pointer-events-none"
+              style={{
+                background: 'linear-gradient(90deg, transparent 0%, #22d3ee 30%, #a78bfa 70%, transparent 100%)',
+                boxShadow: '0 0 12px #22d3ee, 0 0 30px #22d3ee66',
+              }}
+              initial={{ top: '0%' }}
+              animate={{ top: '100%' }}
+              transition={{ duration: 1.6, ease: 'linear', repeat: Infinity }}
+            />
+
+            {/* Frosted-glass vignette — dims tile during analysis */}
+            <motion.div
+              key="vignette"
+              className="absolute inset-0 z-20 pointer-events-none"
+              style={{ background: 'rgba(2,6,23,0.45)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            />
+
+            {/* Progress ring — center of viewer */}
+            <motion.div
+              key="ring"
+              className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none"
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="relative flex items-center justify-center">
+                <svg width="72" height="72" viewBox="0 0 72 72">
+                  {/* Track */}
+                  <circle
+                    cx="36" cy="36" r={RING_R}
+                    fill="none"
+                    stroke="rgba(34,211,238,0.12)"
+                    strokeWidth="3"
+                  />
+                  {/* Progress arc */}
+                  <motion.circle
+                    cx="36" cy="36" r={RING_R}
+                    fill="none"
+                    stroke="#22d3ee"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={RING_CIRC}
+                    animate={{ strokeDashoffset: RING_CIRC * (1 - aiProgress / 100) }}
+                    initial={{ strokeDashoffset: RING_CIRC }}
+                    transition={{ duration: 0.35, ease: 'easeOut' }}
+                    style={{ rotate: -90, transformOrigin: '36px 36px' }}
+                  />
+                </svg>
+                <span className="absolute font-mono text-[12px] font-semibold text-cyan-400">
+                  {aiProgress}%
+                </span>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Zoom controls — bottom left */}
       <div className="absolute bottom-12 left-4 z-10 flex flex-col gap-1">

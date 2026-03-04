@@ -26,6 +26,7 @@
     "@tanstack/react-store": "^0.9.1",
     "@tanstack/router-plugin": "^1.132.0",
     "@tanstack/store": "^0.9.1",
+    "@tensorflow/tfjs": "^4.22.0",
     "@types/openseadragon": "^5.0.2",
     "framer-motion": "^12.35.0",
     "lucide-react": "^0.545.0",

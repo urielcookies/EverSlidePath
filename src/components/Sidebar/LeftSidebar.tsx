@@ -7,8 +7,15 @@ import {
   setAnnotationMode,
   setAnnotationLabel,
   clearAnnotations,
+  setAiRunning,
+  setAiProgress,
+  setAiThreshold,
+  setAiInferenceTime,
+  setAiError,
+  addAnnotation,
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
+import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
 
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
@@ -100,11 +107,38 @@ export default function LeftSidebar() {
   const annotationMode = usePathologyStore((s) => s.annotationMode)
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
   const annotations = usePathologyStore((s) => s.annotations)
+  const aiRunning = usePathologyStore((s) => s.aiRunning)
+  const aiThreshold = usePathologyStore((s) => s.aiThreshold)
+  const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
+  const aiError = usePathologyStore((s) => s.aiError)
 
   const [studyOpen, setStudyOpen] = useState(true)
   const [layerOpen, setLayerOpen] = useState(true)
   const [channelOpen, setChannelOpen] = useState(true)
   const [toolsOpen, setToolsOpen] = useState(true)
+  const [aiOpen, setAiOpen] = useState(true)
+
+  const runAnalysis = async () => {
+    if (aiRunning) return
+    setAiError(null)
+    setAiRunning(true)
+    setAiProgress(0)
+    setAiInferenceTime(null)
+    try {
+      const result = await analyzeCurrentView(aiThreshold, (pct) => setAiProgress(pct))
+      if (result) {
+        result.annotations.forEach((ann) => addAnnotation(ann))
+        setAiInferenceTime(result.inferenceMs)
+      } else {
+        setAiError('Viewer not ready — open a slide first.')
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setAiRunning(false)
+      setAiProgress(0)
+    }
+  }
   const [confirmClear, setConfirmClear] = useState(false)
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({
     annotations: true,
@@ -193,6 +227,131 @@ export default function LeftSidebar() {
                     )
                   })}
                 </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* — AI ANALYSIS — */}
+        <div className="border-b border-slate-800/60">
+          <SectionHeader label="AI Analysis" open={aiOpen} onToggle={() => setAiOpen(!aiOpen)} />
+          <AnimatePresence initial={false}>
+            {aiOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-3 pb-3 pt-1 space-y-3">
+                  {/* Run Analysis button */}
+                  <button
+                    onClick={runAnalysis}
+                    disabled={aiRunning}
+                    className={`w-full flex items-center justify-center gap-2 rounded px-3 py-2 text-[12px] font-semibold transition-all border ${
+                      aiRunning
+                        ? 'bg-slate-800/60 border-slate-700/40 text-slate-500 cursor-not-allowed'
+                        : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/25 hover:border-cyan-500/60'
+                    }`}
+                    style={aiRunning ? undefined : { boxShadow: '0 0 16px rgba(34,211,238,0.15)' }}
+                  >
+                    {aiRunning ? (
+                      <>
+                        {/* Spinner */}
+                        <svg
+                          className="animate-spin"
+                          width="13" height="13" viewBox="0 0 13 13"
+                          fill="none" stroke="#64748b" strokeWidth="1.5"
+                        >
+                          <circle cx="6.5" cy="6.5" r="5" strokeOpacity="0.25" />
+                          <path d="M6.5 1.5a5 5 0 0 1 5 5" />
+                        </svg>
+                        Analyzing…
+                      </>
+                    ) : (
+                      <>
+                        {/* Play / nucleus icon */}
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4">
+                          <circle cx="6.5" cy="6.5" r="5.5" />
+                          <circle cx="6.5" cy="6.5" r="2" />
+                        </svg>
+                        Run AI Analysis
+                      </>
+                    )}
+                  </button>
+
+                  {/* Probability threshold slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="pv-label text-[10px]">Probability Threshold</span>
+                      <span className="font-mono text-[11px] text-slate-300">{aiThreshold.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={0.9}
+                      step={0.05}
+                      value={aiThreshold}
+                      onChange={(e) => setAiThreshold(Number(e.target.value))}
+                      disabled={aiRunning}
+                      className="w-full h-1 appearance-none rounded-full outline-none cursor-pointer disabled:opacity-40"
+                      style={{
+                        background: `linear-gradient(to right, #22d3ee ${((aiThreshold - 0.1) / 0.8) * 100}%, #1e293b ${((aiThreshold - 0.1) / 0.8) * 100}%)`,
+                      }}
+                    />
+                    <div className="flex justify-between">
+                      <span className="pv-label text-[9px]">More detections</span>
+                      <span className="pv-label text-[9px]">Fewer / precise</span>
+                    </div>
+                  </div>
+
+                  {/* Inference result badges */}
+                  <AnimatePresence>
+                    {aiInferenceTime !== null && !aiRunning && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex items-center justify-between rounded bg-slate-800/50 border border-slate-700/40 px-2 py-1.5"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                          <span className="font-mono text-[10px] text-emerald-400">
+                            {aiInferenceTime}ms
+                          </span>
+                        </div>
+                        {isUsingFallback() && (
+                          <span
+                            className="rounded px-1.5 py-px text-[9px] font-mono"
+                            style={{
+                              background: 'rgba(251,191,36,0.12)',
+                              color: '#fbbf24',
+                              border: '1px solid rgba(251,191,36,0.25)',
+                            }}
+                          >
+                            Fallback detection
+                          </span>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Error state */}
+                  <AnimatePresence>
+                    {aiError && (
+                      <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="text-[10px] text-red-400 leading-snug"
+                      >
+                        {aiError}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
