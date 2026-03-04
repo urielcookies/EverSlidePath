@@ -32,6 +32,7 @@ export interface PathologyState {
   annotationMode: boolean
   annotationLabel: AnnotationLabel
   annotations: Annotation[]
+  hoveredAnnotationId: string | null
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -53,6 +54,7 @@ export const pathologyStore = new Store<PathologyState>({
   annotationMode: false,
   annotationLabel: 'Tumor',
   annotations: [],
+  hoveredAnnotationId: null,
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -108,4 +110,8 @@ export function removeAnnotation(id: string): void {
 
 export function clearAnnotations(): void {
   pathologyStore.setState((prev) => ({ ...prev, annotations: [] }))
+}
+
+export function setHoveredAnnotation(id: string | null): void {
+  pathologyStore.setState((prev) => ({ ...prev, hoveredAnnotationId: id }))
 }

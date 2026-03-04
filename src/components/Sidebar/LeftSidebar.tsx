@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { usePathologyStore, setChannel, toggleLeftSidebar } from '../../store/pathologyStore'
+import {
+  usePathologyStore,
+  setChannel,
+  toggleLeftSidebar,
+  setAnnotationMode,
+  setAnnotationLabel,
+  clearAnnotations,
+} from '../../store/pathologyStore'
+import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
@@ -76,19 +84,43 @@ function EyeIcon({ visible }: { visible: boolean }) {
   )
 }
 
+function CrosshairIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <circle cx="7" cy="7" r="3" />
+      <path d="M7 1v2M7 11v2M1 7h2M11 7h2" />
+    </svg>
+  )
+}
+
 export default function LeftSidebar() {
   const isOpen = usePathologyStore((s) => s.leftSidebarOpen)
   const activeSlideId = usePathologyStore((s) => s.activeSlideId)
   const channels = usePathologyStore((s) => s.channels)
+  const annotationMode = usePathologyStore((s) => s.annotationMode)
+  const annotationLabel = usePathologyStore((s) => s.annotationLabel)
+  const annotations = usePathologyStore((s) => s.annotations)
 
   const [studyOpen, setStudyOpen] = useState(true)
   const [layerOpen, setLayerOpen] = useState(true)
   const [channelOpen, setChannelOpen] = useState(true)
+  const [toolsOpen, setToolsOpen] = useState(true)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({
     annotations: true,
     cells: true,
     tissue: true,
   })
+
+  const handleClearAll = () => {
+    if (confirmClear) {
+      clearAnnotations()
+      setConfirmClear(false)
+    } else {
+      setConfirmClear(true)
+      setTimeout(() => setConfirmClear(false), 2500)
+    }
+  }
 
   return (
     <motion.aside
@@ -161,6 +193,101 @@ export default function LeftSidebar() {
                     )
                   })}
                 </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* — PRECISION TOOLS — */}
+        <div className="border-b border-slate-800/60">
+          <SectionHeader label="Precision Tools" open={toolsOpen} onToggle={() => setToolsOpen(!toolsOpen)} />
+          <AnimatePresence initial={false}>
+            {toolsOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-3 pb-3 pt-1 space-y-3">
+                  {/* Annotation mode toggle */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {annotationMode && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
+                      )}
+                      <span className="pv-label">Annotation Mode</span>
+                    </div>
+                    <button
+                      onClick={() => setAnnotationMode(!annotationMode)}
+                      className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-medium transition-all border ${
+                        annotationMode
+                          ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400'
+                          : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                      }`}
+                      style={annotationMode ? { boxShadow: '0 0 10px rgba(34,211,238,0.2)' } : undefined}
+                    >
+                      <CrosshairIcon />
+                      {annotationMode ? 'Active' : 'Enable'}
+                    </button>
+                  </div>
+
+                  {/* Label picker */}
+                  <div className="space-y-1.5">
+                    <span className="pv-label text-[10px]">Label</span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {ANNOTATION_LABELS.map(({ label, color }) => {
+                        const isActive = annotationLabel === label
+                        return (
+                          <button
+                            key={label}
+                            onClick={() => setAnnotationLabel(label)}
+                            className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-all border"
+                            style={{
+                              background: isActive ? `${color}22` : 'rgba(30,41,59,0.6)',
+                              borderColor: isActive ? `${color}66` : 'rgba(51,65,85,0.5)',
+                              color: isActive ? color : '#64748b',
+                              boxShadow: isActive ? `0 0 8px ${color}33` : 'none',
+                            }}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                              style={{ background: color }}
+                            />
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Count + Clear row */}
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[11px] text-slate-500">
+                      <span className="text-slate-300">{annotations.length}</span> placed
+                    </span>
+                    <AnimatePresence mode="wait">
+                      {annotations.length > 0 && (
+                        <motion.button
+                          key={confirmClear ? 'confirm' : 'clear'}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ duration: 0.12 }}
+                          onClick={handleClearAll}
+                          className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors border ${
+                            confirmClear
+                              ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                              : 'bg-slate-800/60 border-slate-700/50 text-slate-500 hover:text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          {confirmClear ? 'Confirm clear?' : 'Clear all'}
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

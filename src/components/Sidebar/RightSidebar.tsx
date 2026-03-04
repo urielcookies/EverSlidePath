@@ -1,12 +1,8 @@
+import { motion, AnimatePresence } from 'framer-motion'
 import type { SlideMetadata } from '../../server/slideMetadata'
-
-const CELL_DATA = [
-  { type: 'Tumor',   count: 14_820, areaPercent: 42.3, meanIntensity: 187, color: '#f87171' },
-  { type: 'Stroma',  count:  9_340, areaPercent: 26.6, meanIntensity: 112, color: '#94a3b8' },
-  { type: 'Immune',  count:  6_210, areaPercent: 17.7, meanIntensity: 203, color: '#4ade80' },
-  { type: 'Vessel',  count:  2_980, areaPercent:  8.5, meanIntensity:  98, color: '#f59e0b' },
-  { type: 'Necrosis',count:  1_760, areaPercent:  5.0, meanIntensity:  44, color: '#a78bfa' },
-]
+import { usePathologyStore, removeAnnotation, setHoveredAnnotation } from '../../store/pathologyStore'
+import { getViewerInstance } from '../../lib/viewerInstance'
+import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 
 const REGION_STATS = {
   x1: 18_240,
@@ -39,7 +35,42 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+function TrashIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <path d="M1 3h10M4 3V2h4v1M5 6v3M7 6v3M2 3l1 7h6l1-7" />
+    </svg>
+  )
+}
+
 export default function RightSidebar({ metadata }: Props) {
+  const annotations = usePathologyStore((s) => s.annotations)
+  const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
+
+  const total = annotations.length || 1 // avoid div/0
+  const liveCellData = ANNOTATION_LABELS.map(({ label, color }) => {
+    const count = annotations.filter((a) => a.label === label).length
+    return {
+      type: label,
+      count,
+      areaPercent: Math.round((count / total) * 1000) / 10,
+      color,
+    }
+  })
+
+  const recentAnnotations = [...annotations]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 8)
+
+  const flyTo = async (x: number, y: number) => {
+    const viewer = getViewerInstance()
+    if (!viewer) return
+    const OSD = (await import('openseadragon')).default
+    const viewportPoint = viewer.viewport.imageToViewportCoordinates(new OSD.Point(x, y))
+    viewer.viewport.panTo(viewportPoint, false)
+    viewer.viewport.zoomTo(4, viewportPoint, false)
+  }
+
   return (
     <aside
       className="flex w-[320px] flex-shrink-0 flex-col overflow-y-auto border-l border-slate-800/60"
@@ -82,8 +113,8 @@ export default function RightSidebar({ metadata }: Props) {
             <span className="pv-label text-[10px] text-right">Int.</span>
           </div>
 
-          {/* Table rows */}
-          {CELL_DATA.map((row) => (
+          {/* Table rows — live from store */}
+          {liveCellData.map((row) => (
             <div
               key={row.type}
               className="grid grid-cols-[80px_1fr_44px_52px] items-center gap-x-1 rounded px-1 py-1 hover:bg-slate-800/30"
@@ -97,13 +128,11 @@ export default function RightSidebar({ metadata }: Props) {
               {/* Mini bar */}
               <div className="flex items-center gap-1">
                 <div className="relative h-1.5 flex-1 rounded-full bg-slate-800">
-                  <div
+                  <motion.div
                     className="absolute left-0 top-0 h-full rounded-full"
-                    style={{
-                      width: `${row.areaPercent}%`,
-                      background: row.color,
-                      opacity: 0.7,
-                    }}
+                    animate={{ width: `${Math.min(row.areaPercent, 100)}%` }}
+                    transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+                    style={{ background: row.color, opacity: 0.7 }}
                   />
                 </div>
                 <span className="pv-value w-7 text-right text-[10px] text-slate-400">
@@ -116,13 +145,94 @@ export default function RightSidebar({ metadata }: Props) {
                 {row.count.toLocaleString()}
               </span>
 
-              {/* Mean intensity */}
-              <span className="pv-value text-right text-[10px] text-slate-400">
-                {row.meanIntensity}
-              </span>
+              {/* Mean intensity — no real data at this stage */}
+              <span className="pv-value text-right text-[10px] text-slate-600">—</span>
             </div>
           ))}
         </div>
+      </div>
+
+      {/* — RECENT ANNOTATIONS — */}
+      <div className="border-b border-slate-800/60">
+        <div className="flex items-center justify-between border-b border-slate-800/60 px-3 py-2">
+          <span className="pv-label tracking-widest">Recent Annotations</span>
+          {annotations.length > 0 && (
+            <span className="font-mono text-[10px] text-slate-500">
+              {annotations.length} total
+            </span>
+          )}
+        </div>
+
+        {annotations.length === 0 ? (
+          <p className="px-3 py-4 text-[11px] text-slate-600 text-center">
+            No annotations placed yet.
+            <br />
+            Enable Annotation Mode to begin.
+          </p>
+        ) : (
+          <ul className="py-1">
+            <AnimatePresence initial={false}>
+              {recentAnnotations.map((ann) => {
+                const isHovered = hoveredAnnotationId === ann.id
+                return (
+                  <motion.li
+                    key={ann.id}
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                    className="group mx-1 mb-0.5 flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 transition-colors"
+                    style={{
+                      background: isHovered ? 'rgba(30,41,59,0.8)' : 'transparent',
+                    }}
+                    onClick={() => flyTo(ann.imageCoords.x, ann.imageCoords.y)}
+                    onMouseEnter={() => setHoveredAnnotation(ann.id)}
+                    onMouseLeave={() => setHoveredAnnotation(null)}
+                  >
+                    {/* Color dot */}
+                    <span
+                      className="h-2 w-2 flex-shrink-0 rounded-full"
+                      style={{
+                        background: ann.color,
+                        boxShadow: isHovered ? `0 0 6px ${ann.color}` : 'none',
+                      }}
+                    />
+
+                    {/* Label chip */}
+                    <span
+                      className="rounded px-1.5 py-px text-[9px] font-medium font-mono flex-shrink-0"
+                      style={{
+                        background: `${ann.color}22`,
+                        color: ann.color,
+                        border: `1px solid ${ann.color}44`,
+                      }}
+                    >
+                      {ann.label}
+                    </span>
+
+                    {/* Coordinates */}
+                    <span className="font-mono text-[10px] text-slate-500 flex-1 truncate">
+                      {Math.round(ann.imageCoords.x).toLocaleString()},{' '}
+                      {Math.round(ann.imageCoords.y).toLocaleString()}
+                    </span>
+
+                    {/* Delete button */}
+                    <button
+                      className="flex-shrink-0 text-slate-700 opacity-0 transition-opacity group-hover:opacity-100 hover:!text-red-400"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeAnnotation(ann.id)
+                      }}
+                      title="Remove annotation"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </motion.li>
+                )
+              })}
+            </AnimatePresence>
+          </ul>
+        )}
       </div>
 
       {/* — REGION STATISTICS — */}

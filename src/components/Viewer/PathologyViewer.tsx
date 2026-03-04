@@ -1,17 +1,35 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   usePathologyStore,
   setZoomLevel,
   setViewportCenter,
+  addAnnotation,
+  type AnnotationLabel,
 } from '../../store/pathologyStore'
+import { setViewerInstance } from '../../lib/viewerInstance'
+import { LABEL_COLOR_MAP } from '../../lib/annotationConfig'
 
 export default function PathologyViewer() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const viewerRef = useRef<ReturnType<typeof import('openseadragon')['default']> | null>(null)
+  const viewerRef = useRef<any>(null)
+  const annotationModeRef = useRef(false)
+  const annotationLabelRef = useRef<AnnotationLabel>('Tumor')
+
+  // scale=0 on init so SVG stays hidden until OSD fires update-viewport
+  const [svgTransform, setSvgTransform] = useState({ tx: 0, ty: 0, scale: 0 })
 
   const zoomLevel = usePathologyStore((s) => s.zoomLevel)
   const center = usePathologyStore((s) => s.viewportCenter)
   const channels = usePathologyStore((s) => s.channels)
+  const annotationMode = usePathologyStore((s) => s.annotationMode)
+  const annotationLabel = usePathologyStore((s) => s.annotationLabel)
+  const annotations = usePathologyStore((s) => s.annotations)
+  const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
+
+  // Sync refs into OSD event handlers — avoids stale closure
+  useEffect(() => { annotationModeRef.current = annotationMode }, [annotationMode])
+  useEffect(() => { annotationLabelRef.current = annotationLabel }, [annotationLabel])
 
   // Build CSS filter from channel states (cosmetic approximation)
   const channelFilter = (() => {
@@ -73,10 +91,12 @@ export default function PathologyViewer() {
         springStiffness: 6.5,
         zoomPerClick: 1.4,
         gestureSettingsMouse: { flickEnabled: true, flickMinSpeed: 20, flickMomentum: 0.4 },
+        // @ts-expect-error — backgroundColor is valid OSD option, missing from @types/openseadragon
         backgroundColor: '#020617',
       })
 
       viewerRef.current = viewer
+      setViewerInstance(viewer)
 
       viewer.addHandler('zoom', ({ zoom }: { zoom: number }) => {
         setZoomLevel(Math.round(zoom * 10) / 10)
@@ -88,12 +108,36 @@ export default function PathologyViewer() {
           Math.round(c.y * 10000) / 10000,
         )
       })
+
+      // O(1) per frame: single <g> transform keeps all markers pinned to tissue
+      viewer.addHandler('update-viewport', () => {
+        const origin = viewer.viewport.imageToViewerElementCoordinates(new OSD.Point(0, 0))
+        const scalePoint = viewer.viewport.imageToViewerElementCoordinates(new OSD.Point(1, 0))
+        const s = scalePoint.x - origin.x
+        setSvgTransform({ tx: origin.x, ty: origin.y, scale: s > 0 ? s : 1 })
+      })
+
+      // Click-to-annotate: preventDefaultAction suppresses OSD zoom-on-click
+      viewer.addHandler('canvas-click', (event: any) => {
+        if (!annotationModeRef.current) return
+        event.preventDefaultAction = true
+        const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
+        addAnnotation({
+          id: crypto.randomUUID(),
+          type: 'point',
+          imageCoords: { x: pt.x, y: pt.y },
+          label: annotationLabelRef.current,
+          color: LABEL_COLOR_MAP[annotationLabelRef.current],
+          createdAt: Date.now(),
+        })
+      })
     }
 
     initViewer()
 
     return () => {
       destroyed = true
+      setViewerInstance(null)
       if (viewerRef.current) {
         viewerRef.current.destroy()
         viewerRef.current = null
@@ -104,14 +148,79 @@ export default function PathologyViewer() {
   const pxX = Math.round(center.x * 46000)
   const pxY = Math.round(center.y * 32914)
 
+  // Scale-compensated sizes keep markers visually constant across zoom levels
+  const markerR = 6 / Math.max(svgTransform.scale, 0.001)
+  const markerSW = 1.5 / Math.max(svgTransform.scale, 0.001)
+  const markerSWHovered = 3 / Math.max(svgTransform.scale, 0.001)
+
   return (
     <div className="relative flex-1 overflow-hidden bg-[#020617]">
       {/* OSD container */}
       <div
         ref={containerRef}
         className="absolute inset-0"
-        style={{ filter: channelFilter }}
+        style={{
+          filter: channelFilter,
+          cursor: annotationMode ? 'crosshair' : undefined,
+        }}
       />
+
+      {/* SVG annotation overlay — hidden until first update-viewport fires */}
+      {svgTransform.scale > 0 && (
+        <svg
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={{ zIndex: 5 }}
+        >
+          <defs>
+            <filter id="marker-glow" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter id="marker-glow-pulse" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* Single <g> transform: O(1) DOM update per viewport event */}
+          <g transform={`translate(${svgTransform.tx}, ${svgTransform.ty}) scale(${svgTransform.scale})`}>
+            <AnimatePresence>
+              {annotations.map((ann) => {
+                const isHovered = hoveredAnnotationId === ann.id
+                return (
+                  <motion.circle
+                    key={ann.id}
+                    cx={ann.imageCoords.x}
+                    cy={ann.imageCoords.y}
+                    r={isHovered ? markerR * 1.35 : markerR}
+                    fill={ann.color}
+                    fillOpacity={isHovered ? 0.6 : 0.45}
+                    stroke={ann.color}
+                    strokeWidth={isHovered ? markerSWHovered : markerSW}
+                    filter={isHovered ? 'url(#marker-glow-pulse)' : 'url(#marker-glow)'}
+                    style={{
+                      pointerEvents: 'all',
+                      cursor: 'pointer',
+                      transformBox: 'fill-box',
+                      transformOrigin: 'center',
+                    }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                  />
+                )
+              })}
+            </AnimatePresence>
+          </g>
+        </svg>
+      )}
 
       {/* Zoom controls — bottom left */}
       <div className="absolute bottom-12 left-4 z-10 flex flex-col gap-1">
@@ -146,6 +255,26 @@ export default function PathologyViewer() {
           {zoomLevel.toFixed(1)}×
         </span>
       </div>
+
+      {/* Annotation mode indicator — top center */}
+      <AnimatePresence>
+        {annotationMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="absolute top-3 left-1/2 z-10 -translate-x-1/2"
+          >
+            <div className="flex items-center gap-2 rounded-full bg-slate-900/90 border border-cyan-500/40 px-3 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="font-mono text-[11px] text-cyan-400 tracking-widest uppercase">
+                Annotation Mode
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Coordinates readout — bottom center */}
       <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
