@@ -1,10 +1,22 @@
 import { Store } from '@tanstack/store'
 import { useStore } from '@tanstack/react-store'
+import { getViewerInstance } from '../lib/viewerInstance'
 
 export interface ChannelState {
   visible: boolean
   intensity: number
   gamma: number
+}
+
+export type AnnotationLabel = 'Tumor' | 'Stroma' | 'Immune' | 'Vessel' | 'Necrosis'
+
+export interface Annotation {
+  id: string
+  type: 'point'
+  imageCoords: { x: number; y: number }
+  label: AnnotationLabel
+  color: string
+  createdAt: number
 }
 
 export interface PathologyState {
@@ -17,6 +29,9 @@ export interface PathologyState {
     tritc: ChannelState
   }
   leftSidebarOpen: boolean
+  annotationMode: boolean
+  annotationLabel: AnnotationLabel
+  annotations: Annotation[]
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -35,6 +50,9 @@ export const pathologyStore = new Store<PathologyState>({
     tritc: defaultChannel(160),
   },
   leftSidebarOpen: true,
+  annotationMode: false,
+  annotationLabel: 'Tumor',
+  annotations: [],
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -63,4 +81,31 @@ export function setViewportCenter(x: number, y: number): void {
 
 export function toggleLeftSidebar(): void {
   pathologyStore.setState((prev) => ({ ...prev, leftSidebarOpen: !prev.leftSidebarOpen }))
+}
+
+export function setAnnotationMode(active: boolean): void {
+  const viewer = getViewerInstance()
+  if (viewer) {
+    viewer.setMouseNavEnabled(!active)
+  }
+  pathologyStore.setState((prev) => ({ ...prev, annotationMode: active }))
+}
+
+export function setAnnotationLabel(label: AnnotationLabel): void {
+  pathologyStore.setState((prev) => ({ ...prev, annotationLabel: label }))
+}
+
+export function addAnnotation(ann: Annotation): void {
+  pathologyStore.setState((prev) => ({ ...prev, annotations: [...prev.annotations, ann] }))
+}
+
+export function removeAnnotation(id: string): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    annotations: prev.annotations.filter((a) => a.id !== id),
+  }))
+}
+
+export function clearAnnotations(): void {
+  pathologyStore.setState((prev) => ({ ...prev, annotations: [] }))
 }
