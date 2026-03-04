@@ -1,87 +1,116 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { getSlideMetadata, type SlideMetadata } from '../server/slideMetadata'
+import LeftSidebar from '../components/Sidebar/LeftSidebar'
+import RightSidebar from '../components/Sidebar/RightSidebar'
+import PathologyViewer from '../components/Viewer/PathologyViewer'
+import { toggleLeftSidebar } from '../store/pathologyStore'
 
-export const Route = createFileRoute('/')({ component: App })
+export const Route = createFileRoute('/')({
+  loader: async () => {
+    const metadata = getSlideMetadata('slide-001')
+    return { metadata }
+  },
+  component: ViewerPage,
+})
 
-function App() {
+function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
   return (
-    <main className="page-wrap px-4 pb-8 pt-14">
-      <section className="island-shell rise-in relative overflow-hidden rounded-[2rem] px-6 py-10 sm:px-10 sm:py-14">
-        <div className="pointer-events-none absolute -left-20 -top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(79,184,178,0.32),transparent_66%)]" />
-        <div className="pointer-events-none absolute -bottom-20 -right-20 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(47,106,74,0.18),transparent_66%)]" />
-        <p className="island-kicker mb-3">TanStack Start Base Template</p>
-        <h1 className="display-title mb-5 max-w-3xl text-4xl leading-[1.02] font-bold tracking-tight text-[var(--sea-ink)] sm:text-6xl">
-          Start simple, ship quickly.
-        </h1>
-        <p className="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)] sm:text-lg">
-          This base starter intentionally keeps things light: two routes, clean
-          structure, and the essentials you need to build from scratch.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <a
-            href="/about"
-            className="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] no-underline transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)]"
-          >
-            About This Starter
-          </a>
-          <a
-            href="https://tanstack.com/router"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-full border border-[rgba(23,58,64,0.2)] bg-white/50 px-5 py-2.5 text-sm font-semibold text-[var(--sea-ink)] no-underline transition hover:-translate-y-0.5 hover:border-[rgba(23,58,64,0.35)]"
-          >
-            Router Guide
-          </a>
+    <header
+      className="flex h-9 flex-shrink-0 items-center gap-3 border-b border-slate-800/60 px-4"
+      style={{ background: 'rgba(15, 23, 42, 0.98)' }}
+    >
+      {/* Logo + wordmark */}
+      <div className="flex items-center gap-2 pr-4 border-r border-slate-700/50">
+        <div className="flex h-5 w-5 items-center justify-center rounded bg-cyan-500/20 border border-cyan-500/40">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <circle cx="5" cy="5" r="3" stroke="#22d3ee" strokeWidth="1.2" />
+            <circle cx="5" cy="5" r="1" fill="#22d3ee" />
+          </svg>
         </div>
-      </section>
+        <span className="text-xs font-semibold tracking-wide text-slate-200">PathShare</span>
+      </div>
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          [
-            'Type-Safe Routing',
-            'Routes and links stay in sync across every page.',
-          ],
-          [
-            'Server Functions',
-            'Call server code from your UI without creating API boilerplate.',
-          ],
-          [
-            'Streaming by Default',
-            'Ship progressively rendered responses for faster experiences.',
-          ],
-          [
-            'Tailwind Native',
-            'Design quickly with utility-first styling and reusable tokens.',
-          ],
-        ].map(([title, desc], index) => (
-          <article
-            key={title}
-            className="island-shell feature-card rise-in rounded-2xl p-5"
-            style={{ animationDelay: `${index * 90 + 80}ms` }}
-          >
-            <h2 className="mb-2 text-base font-semibold text-[var(--sea-ink)]">
-              {title}
-            </h2>
-            <p className="m-0 text-sm text-[var(--sea-ink-soft)]">{desc}</p>
-          </article>
-        ))}
-      </section>
+      {/* Breadcrumb */}
+      {metadata && (
+        <>
+          <span className="text-xs text-slate-500">/</span>
+          <span className="text-xs font-medium text-slate-300 font-mono">{metadata.name}</span>
+          <span className="text-xs text-slate-500">/</span>
+          <span className="text-xs text-slate-500">{metadata.tissueType}</span>
+        </>
+      )}
 
-      <section className="island-shell mt-8 rounded-2xl p-6">
-        <p className="island-kicker mb-2">Quick Start</p>
-        <ul className="m-0 list-disc space-y-2 pl-5 text-sm text-[var(--sea-ink-soft)]">
-          <li>
-            Edit <code>src/routes/index.tsx</code> to customize the home page.
-          </li>
-          <li>
-            Update <code>src/components/Header.tsx</code> and{' '}
-            <code>src/components/Footer.tsx</code> for brand links.
-          </li>
-          <li>
-            Add routes in <code>src/routes</code> and tweak visual tokens in{' '}
-            <code>src/styles.css</code>.
-          </li>
-        </ul>
-      </section>
-    </main>
+      {/* Scan chips */}
+      {metadata && (
+        <div className="ml-auto flex items-center gap-2">
+          <Chip label={metadata.objectiveLens} />
+          <Chip label={`${metadata.micronsPerPixel} µm/px`} />
+          <Chip label={metadata.stainProtocol} accent />
+          <ConnectionDot />
+        </div>
+      )}
+
+      {/* Sidebar toggle button */}
+      <button
+        onClick={toggleLeftSidebar}
+        className="ml-2 flex h-6 w-6 items-center justify-center rounded hover:bg-slate-700/60 transition-colors"
+        title="Toggle left sidebar"
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#64748b" strokeWidth="1.5">
+          <rect x="1" y="2" width="12" height="10" rx="1.5" />
+          <line x1="5" y1="2" x2="5" y2="12" />
+        </svg>
+      </button>
+    </header>
+  )
+}
+
+function Chip({ label, accent = false }: { label: string; accent?: boolean }) {
+  return (
+    <span
+      className="rounded px-1.5 py-px text-[10px] font-mono font-medium"
+      style={
+        accent
+          ? {
+              background: 'rgba(34, 211, 238, 0.1)',
+              color: '#22d3ee',
+              border: '1px solid rgba(34, 211, 238, 0.2)',
+            }
+          : {
+              background: 'rgba(30, 41, 59, 0.8)',
+              color: '#94a3b8',
+              border: '1px solid rgba(148, 163, 184, 0.12)',
+            }
+      }
+    >
+      {label}
+    </span>
+  )
+}
+
+function ConnectionDot() {
+  return (
+    <div className="flex items-center gap-1.5 pl-2 border-l border-slate-700/50">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+      </span>
+      <span className="text-[10px] text-slate-500">Live</span>
+    </div>
+  )
+}
+
+function ViewerPage() {
+  const { metadata } = Route.useLoaderData()
+
+  return (
+    <div className="flex h-screen flex-col bg-[#020617] overflow-hidden">
+      <TopBar metadata={metadata} />
+      <div className="flex flex-1 overflow-hidden">
+        <LeftSidebar />
+        <PathologyViewer />
+        <RightSidebar metadata={metadata} />
+      </div>
+    </div>
   )
 }
