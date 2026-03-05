@@ -17,15 +17,10 @@ import {
   pathologyStore,
 } from '../store/pathologyStore'
 
-const SLIDE_ID = 'slide-001'
 const SAVE_DEBOUNCE_MS = 1500
 
 export const Route = createFileRoute('/')({
-  loader: async () => {
-    const metadata = getSlideMetadata(SLIDE_ID)
-    const annotations = await getAnnotationsFn({ data: SLIDE_ID })
-    return { metadata, annotations }
-  },
+  loader: async () => ({}),
   component: ViewerPage,
 })
 
@@ -159,8 +154,6 @@ function Chip({ label, accent = false }: { label: string; accent?: boolean }) {
 
 // ─── ViewerPage ───────────────────────────────────────────────────────────────
 function ViewerPage() {
-  const { annotations: loaderAnnotations } = Route.useLoaderData()
-  // Derive metadata client-side from active slide so navigation updates the TopBar/Viewer
   const activeSlideId = usePathologyStore((s) => s.activeSlideId)
   const uploadedSlideMetadata = usePathologyStore((s) => s.uploadedSlideMetadata)
   const metadata: SlideMetadata = uploadedSlideMetadata[activeSlideId] ?? getSlideMetadata(activeSlideId)
@@ -169,24 +162,36 @@ function ViewerPage() {
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Prevents the first load-from-DB from triggering an immediate save
-  const hasInitialized = useRef(false)
+  // true while loading a slide's annotations — prevents spurious auto-saves
+  const slideLoadingRef = useRef(true)
 
-  // Pre-populate store from DB on mount
+  // Fetch persisted slides from D1 on mount
   useEffect(() => {
-    if (loaderAnnotations.length > 0) {
-      loadAnnotations(loaderAnnotations)
-    }
-    // Fetch uploaded slides from D1
     fetchUploadedSlidesFn().then(setUploadedSlides).catch(() => {})
-    // Small delay so the initial loadAnnotations doesn't trip the save effect
-    const t = setTimeout(() => { hasInitialized.current = true }, 100)
-    return () => clearTimeout(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load annotations whenever the active slide changes
+  useEffect(() => {
+    slideLoadingRef.current = true
+    let cancelled = false
+
+    getAnnotationsFn({ data: activeSlideId })
+      .then((anns) => {
+        if (!cancelled) {
+          loadAnnotations(anns)
+          setSyncStatus('idle')
+          // Small delay so the loadAnnotations state update settles before saves can fire
+          setTimeout(() => { if (!cancelled) slideLoadingRef.current = false }, 150)
+        }
+      })
+      .catch(() => { if (!cancelled) slideLoadingRef.current = false })
+
+    return () => { cancelled = true }
+  }, [activeSlideId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced auto-save whenever annotations change
   useEffect(() => {
-    if (!hasInitialized.current) return
+    if (slideLoadingRef.current) return
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
 
     setSyncStatus('saving')
@@ -197,10 +202,11 @@ function ViewerPage() {
           ? { threshold: aiThreshold, inferenceMs: aiInferenceTime }
           : null
 
-        // Read current annotations directly from store (not stale closure)
+        // Read fresh values from store (avoid stale closures)
         const current = pathologyStore.state.annotations
+        const slideId = pathologyStore.state.activeSlideId
         await saveAnnotationsFn({
-          data: { slideId: SLIDE_ID, annotations: current, sessionMeta },
+          data: { slideId, annotations: current, sessionMeta },
         })
         setSyncStatus('saved')
         setLastSavedAt(Date.now())

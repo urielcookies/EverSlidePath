@@ -24,7 +24,7 @@ import {
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
 import { uploadSlideFn } from '../../server/upload'
-import { deleteUploadedSlideFn } from '../../server/slideMetadata'
+import { deleteUploadedSlideFn, addLinkedSlideFn } from '../../server/slideMetadata'
 
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
@@ -142,6 +142,9 @@ export default function LeftSidebar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkName, setLinkName] = useState('')
+  const [linkStatus, setLinkStatus] = useState<'idle' | 'saving' | 'error'>('idle')
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -196,6 +199,37 @@ export default function LeftSidebar() {
     } finally {
       // Reset input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleLinkSlide = async () => {
+    const url = linkUrl.trim()
+    if (!url) return
+    const name = linkName.trim() || url.split('/').pop()?.split('?')[0] || 'Linked Slide'
+    setLinkStatus('saving')
+    try {
+      const { id } = await addLinkedSlideFn({ data: { name, url } })
+      const tilesUrl = url.endsWith('.dzi') ? url : { type: 'image', url }
+      addUploadedSlide({
+        id,
+        name,
+        scanDate: new Date().toISOString().slice(0, 10),
+        objectiveLens: '—',
+        micronsPerPixel: 0,
+        dimensions: { width: 1000, height: 1000 },
+        stainProtocol: 'Linked',
+        tissueType: '—',
+        scanner: '—',
+        fileSize: '—',
+        tilesUrl,
+      })
+      setActiveSlide(id)
+      setLinkUrl('')
+      setLinkName('')
+      setLinkStatus('idle')
+    } catch {
+      setLinkStatus('error')
+      setTimeout(() => setLinkStatus('idle'), 3000)
     }
   }
 
@@ -420,6 +454,44 @@ export default function LeftSidebar() {
                   {uploadStatus === 'error' && uploadError && (
                     <p className="text-[10px] text-red-400 leading-snug">{uploadError}</p>
                   )}
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-2 py-0.5">
+                    <div className="flex-1 h-px bg-slate-800" />
+                    <span className="text-[9px] text-slate-600 font-mono uppercase tracking-wider">or link by URL</span>
+                    <div className="flex-1 h-px bg-slate-800" />
+                  </div>
+
+                  {/* URL link inputs */}
+                  <input
+                    type="text"
+                    value={linkName}
+                    onChange={(e) => setLinkName(e.target.value)}
+                    placeholder="Slide name (optional)"
+                    className="w-full rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-200 placeholder-slate-600 outline-none focus:border-cyan-500/50 transition-colors"
+                  />
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      placeholder="Image or .dzi URL…"
+                      className="flex-1 min-w-0 rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-200 placeholder-slate-600 outline-none focus:border-cyan-500/50 transition-colors"
+                    />
+                    <button
+                      onClick={handleLinkSlide}
+                      disabled={!linkUrl.trim() || linkStatus === 'saving'}
+                      className={`flex-shrink-0 rounded border px-2 py-1 text-[11px] font-medium transition-all ${
+                        linkStatus === 'error'
+                          ? 'bg-red-500/10 border-red-500/40 text-red-400'
+                          : !linkUrl.trim() || linkStatus === 'saving'
+                          ? 'bg-slate-800/40 border-slate-700/40 text-slate-600 cursor-not-allowed'
+                          : 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/20'
+                      }`}
+                    >
+                      {linkStatus === 'saving' ? '…' : linkStatus === 'error' ? 'Error' : 'Add'}
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}

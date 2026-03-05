@@ -23,12 +23,12 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     scanDate: '2024-11-14',
     objectiveLens: '40x',
     micronsPerPixel: 0.2499,
-    dimensions: { width: 1000, height: 1000 },
-    stainProtocol: 'IF-DAPI-HER2-KI67',
-    tissueType: 'Breast Carcinoma',
+    dimensions: { width: 600, height: 452 },
+    stainProtocol: 'H&E',
+    tissueType: 'Breast Invasive Carcinoma',
     scanner: 'Aperio GT 450',
-    fileSize: '4.2 GB',
-    tilesUrl: { type: 'image', url: '/test-slide/sample.png' },
+    fileSize: '98 KB',
+    tilesUrl: { type: 'image', url: '/test-slide/brca.jpg' },
   },
   'slide-002': {
     id: 'slide-002',
@@ -36,12 +36,12 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     scanDate: '2024-11-20',
     objectiveLens: '20x',
     micronsPerPixel: 0.4998,
-    dimensions: { width: 1000, height: 1000 },
+    dimensions: { width: 702, height: 705 },
     stainProtocol: 'H&E',
     tissueType: 'Lung Adenocarcinoma',
     scanner: 'Leica Aperio CS2',
-    fileSize: '2.8 GB',
-    tilesUrl: { type: 'image', url: '/test-slide/sample.png' },
+    fileSize: '1.1 MB',
+    tilesUrl: { type: 'image', url: '/test-slide/lung.png' },
   },
   'slide-003': {
     id: 'slide-003',
@@ -49,12 +49,12 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     scanDate: '2024-12-01',
     objectiveLens: '40x',
     micronsPerPixel: 0.2499,
-    dimensions: { width: 1000, height: 1000 },
-    stainProtocol: 'IHC-CDX2-CK20',
+    dimensions: { width: 4272, height: 2848 },
+    stainProtocol: 'H&E',
     tissueType: 'Colorectal Adenocarcinoma',
     scanner: 'Hamamatsu NanoZoomer S360',
-    fileSize: '5.7 GB',
-    tilesUrl: { type: 'image', url: '/test-slide/sample.png' },
+    fileSize: '2.4 MB',
+    tilesUrl: { type: 'image', url: '/test-slide/colon.jpg' },
   },
 }
 
@@ -71,7 +71,7 @@ export const fetchSlideMetadata = createServerFn({ method: 'GET' })
   })
   .handler(async ({ data: id }) => getSlideMetadata(id))
 
-// Returns all uploaded slides stored in D1
+// Returns all uploaded/linked slides stored in D1
 export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
   .handler(async (): Promise<SlideMetadata[]> => {
     const db = getDB()
@@ -80,11 +80,22 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
       .prepare(`SELECT id, name, metadata_json FROM slides ORDER BY created_at DESC`)
       .all<{ id: string; name: string; metadata_json: string }>()
     return (result.results ?? []).map((row) => {
-      let r2Key = row.id
+      let tilesUrl: string | { type: string; url: string }
       try {
         const meta = JSON.parse(row.metadata_json)
-        if (meta.r2Key) r2Key = meta.r2Key
-      } catch {}
+        if (meta.url) {
+          // URL-linked slide — use URL directly (DZI string or image object)
+          tilesUrl = meta.url.endsWith('.dzi')
+            ? meta.url
+            : { type: 'image', url: meta.url }
+        } else {
+          // R2-stored slide
+          const r2Key = meta.r2Key ?? row.id
+          tilesUrl = { type: 'image', url: `/api/r2/${encodeURIComponent(r2Key)}` }
+        }
+      } catch {
+        tilesUrl = { type: 'image', url: `/api/r2/${encodeURIComponent(row.id)}` }
+      }
       return {
         id: row.id,
         name: row.name,
@@ -92,16 +103,36 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
         objectiveLens: '—',
         micronsPerPixel: 0,
         dimensions: { width: 1000, height: 1000 },
-        stainProtocol: 'Uploaded',
+        stainProtocol: 'Linked',
         tissueType: '—',
         scanner: '—',
         fileSize: '—',
-        tilesUrl: { type: 'image', url: `/api/r2/${encodeURIComponent(r2Key)}` },
+        tilesUrl,
       } satisfies SlideMetadata
     })
   })
 
-// Deletes an uploaded slide from D1 and R2
+// Saves a URL-linked slide to D1 so it persists across sessions
+export const addLinkedSlideFn = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => {
+    const d = data as { name: string; url: string }
+    if (typeof d?.name !== 'string' || !d.name.trim()) throw new Error('name required')
+    if (typeof d?.url !== 'string' || !d.url.trim()) throw new Error('url required')
+    return d
+  })
+  .handler(async ({ data }): Promise<{ id: string }> => {
+    const db = getDB()
+    if (!db) throw new Error('DB unavailable')
+    const id = crypto.randomUUID()
+    const metaJson = JSON.stringify({ url: data.url })
+    await db
+      .prepare(`INSERT INTO slides (id, name, metadata_json) VALUES (?, ?, ?)`)
+      .bind(id, data.name.trim(), metaJson)
+      .run()
+    return { id }
+  })
+
+// Deletes an uploaded or linked slide from D1 and R2 (if applicable)
 export const deleteUploadedSlideFn = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => {
     const d = data as { id: string }
@@ -112,23 +143,20 @@ export const deleteUploadedSlideFn = createServerFn({ method: 'POST' })
     const db = getDB()
     if (!db) return { ok: false }
 
-    // Get r2Key from stored metadata
     const row = await db
       .prepare('SELECT metadata_json FROM slides WHERE id = ?')
       .bind(data.id)
       .first<{ metadata_json: string }>()
 
-    // Delete from R2
-    const env = getWorkerEnv()
-    if (env?.BUCKET) {
+    // Only delete from R2 if this is an uploaded (not URL-linked) slide
+    if (row?.metadata_json) {
       try {
-        let r2Key = data.id
-        if (row?.metadata_json) {
-          const meta = JSON.parse(row.metadata_json)
-          if (meta.r2Key) r2Key = meta.r2Key
+        const meta = JSON.parse(row.metadata_json)
+        if (meta.r2Key && !meta.url) {
+          const env = getWorkerEnv()
+          if (env?.BUCKET) await env.BUCKET.delete(meta.r2Key)
         }
-        await env.BUCKET.delete(r2Key)
-      } catch { /* ignore R2 errors */ }
+      } catch { /* ignore */ }
     }
 
     await db.prepare('DELETE FROM slides WHERE id = ?').bind(data.id).run()
