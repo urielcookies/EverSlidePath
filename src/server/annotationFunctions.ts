@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getDB } from './db'
 import { LABEL_COLOR_MAP } from '../lib/annotationConfig'
-import type { Annotation, AnnotationLabel } from '../store/pathologyStore'
+import type { Annotation, AnnotationLabel, AnnotationShape } from '../store/pathologyStore'
 
 // ─── DB row shape ─────────────────────────────────────────────────────────────
 interface AnnotationRow {
@@ -11,6 +11,10 @@ interface AnnotationRow {
   label: string
   x: number
   y: number
+  shape: string | null
+  radius: number | null
+  color: string | null
+  points_json: string | null
   confidence: number | null
   session_metadata_json: string | null
   created_at: number
@@ -18,12 +22,20 @@ interface AnnotationRow {
 
 function rowToAnnotation(row: AnnotationRow): Annotation {
   const label = row.label as AnnotationLabel
+  const shape = (row.shape ?? 'circle') as AnnotationShape
+  let points: { x: number; y: number }[] | undefined
+  if (row.points_json) {
+    try { points = JSON.parse(row.points_json) } catch { /* ignore */ }
+  }
   return {
     id: row.id,
     type: 'point',
+    shape,
     imageCoords: { x: row.x, y: row.y },
+    radius: row.radius ?? 20,
+    points,
     label,
-    color: LABEL_COLOR_MAP[label] ?? '#94a3b8',
+    color: row.color ?? LABEL_COLOR_MAP[label] ?? '#94a3b8',
     createdAt: row.created_at,
   }
 }
@@ -74,13 +86,17 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
     // Bulk upsert — D1 batch runs all statements in one transaction
     const stmts = data.annotations.map((ann) =>
       db.prepare(`
-        INSERT INTO annotations (id, slide_id, type, label, x, y, confidence, session_metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO annotations (id, slide_id, type, label, x, y, shape, radius, color, points_json, confidence, session_metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          label      = excluded.label,
-          x          = excluded.x,
-          y          = excluded.y,
-          confidence = excluded.confidence
+          label       = excluded.label,
+          x           = excluded.x,
+          y           = excluded.y,
+          shape       = excluded.shape,
+          radius      = excluded.radius,
+          color       = excluded.color,
+          points_json = excluded.points_json,
+          confidence  = excluded.confidence
       `).bind(
         ann.id,
         data.slideId,
@@ -88,6 +104,10 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
         ann.label,
         ann.imageCoords.x,
         ann.imageCoords.y,
+        ann.shape ?? 'circle',
+        ann.radius ?? 20,
+        ann.color,
+        ann.points ? JSON.stringify(ann.points) : null,
         null,
         sessionJson,
         ann.createdAt,

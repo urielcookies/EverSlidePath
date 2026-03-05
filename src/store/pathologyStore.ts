@@ -9,11 +9,15 @@ export interface ChannelState {
 }
 
 export type AnnotationLabel = 'Tumor' | 'Stroma' | 'Immune' | 'Vessel' | 'Necrosis'
+export type AnnotationShape = 'circle' | 'square' | 'pin' | 'freehand'
 
 export interface Annotation {
   id: string
   type: 'point'
+  shape: AnnotationShape
   imageCoords: { x: number; y: number }
+  radius: number
+  points?: { x: number; y: number }[]
   label: AnnotationLabel
   color: string
   createdAt: number
@@ -31,6 +35,8 @@ export interface PathologyState {
   leftSidebarOpen: boolean
   annotationMode: boolean
   annotationLabel: AnnotationLabel
+  annotationShape: AnnotationShape
+  activeColor: string
   annotations: Annotation[]
   hoveredAnnotationId: string | null
   aiRunning: boolean
@@ -61,6 +67,8 @@ export const pathologyStore = new Store<PathologyState>({
   leftSidebarOpen: true,
   annotationMode: false,
   annotationLabel: 'Tumor',
+  annotationShape: 'circle',
+  activeColor: '#f87171',
   annotations: [],
   hoveredAnnotationId: null,
   aiRunning: false,
@@ -115,6 +123,14 @@ export function setAnnotationMode(active: boolean): void {
 
 export function setAnnotationLabel(label: AnnotationLabel): void {
   pathologyStore.setState((prev) => ({ ...prev, annotationLabel: label }))
+}
+
+export function setAnnotationShape(shape: AnnotationShape): void {
+  pathologyStore.setState((prev) => ({ ...prev, annotationShape: shape }))
+}
+
+export function setActiveColor(color: string): void {
+  pathologyStore.setState((prev) => ({ ...prev, activeColor: color }))
 }
 
 export function addAnnotation(ann: Annotation): void {

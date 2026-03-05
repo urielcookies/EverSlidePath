@@ -7,3 +7,7 @@ binding = "DB"
 database_name = "pathshare-db"
 database_id = "cc96adee-f03a-49a3-a6bc-c39171cb9ad3"
 migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "pathshare-assets"

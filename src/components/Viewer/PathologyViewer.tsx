@@ -8,19 +8,37 @@ import {
   removeAnnotation,
   updateAnnotationCoords,
   type AnnotationLabel,
+  type AnnotationShape,
   type Annotation,
 } from '../../store/pathologyStore'
 import { setViewerInstance } from '../../lib/viewerInstance'
-import { LABEL_COLOR_MAP } from '../../lib/annotationConfig'
 import { deleteAnnotationFn } from '../../server/annotationFunctions'
 
 const RING_R = 28
 const RING_CIRC = 2 * Math.PI * RING_R
+const DEFAULT_RADIUS = 15
 
 interface DragState {
   id: string
   imgX: number
   imgY: number
+}
+
+interface GhostShape {
+  startImgX: number
+  startImgY: number
+  currentImgX: number
+  currentImgY: number
+  shape: AnnotationShape
+  color: string
+  freehandPoints: { x: number; y: number }[]
+}
+
+interface DrawingState {
+  startImgX: number
+  startImgY: number
+  hasDragged: boolean
+  freehandPoints: { x: number; y: number }[]
 }
 
 interface PathologyViewerProps {
@@ -34,11 +52,16 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const viewerRef = useRef<any>(null)
   const annotationModeRef = useRef(false)
   const annotationLabelRef = useRef<AnnotationLabel>('Tumor')
+  const annotationShapeRef = useRef<AnnotationShape>('circle')
+  const activeColorRef = useRef('#f87171')
+  const drawingRef = useRef<DrawingState | null>(null)
 
   // scale=0 on init so SVG stays hidden until OSD fires update-viewport
   const [svgTransform, setSvgTransform] = useState({ tx: 0, ty: 0, scale: 0 })
   // Drag state — tracks the annotation being moved and its live image coords
   const [dragState, setDragState] = useState<DragState | null>(null)
+  // Ghost shape — preview of annotation being drawn
+  const [ghostShape, setGhostShape] = useState<GhostShape | null>(null)
   // True once OSD fires the `open` event (tiles loaded, black box gone)
   const [tilesLoaded, setTilesLoaded] = useState(false)
   // Live cursor position in image-pixel space — updated on every mouse move
@@ -49,6 +72,8 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const channels = usePathologyStore((s) => s.channels)
   const annotationMode = usePathologyStore((s) => s.annotationMode)
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
+  const annotationShape = usePathologyStore((s) => s.annotationShape)
+  const activeColor = usePathologyStore((s) => s.activeColor)
   const annotations = usePathologyStore((s) => s.annotations)
   const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
   const deleteMode = usePathologyStore((s) => s.deleteMode)
@@ -58,6 +83,8 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   // Sync refs into OSD event handlers — avoids stale closure
   useEffect(() => { annotationModeRef.current = annotationMode }, [annotationMode])
   useEffect(() => { annotationLabelRef.current = annotationLabel }, [annotationLabel])
+  useEffect(() => { annotationShapeRef.current = annotationShape }, [annotationShape])
+  useEffect(() => { activeColorRef.current = activeColor }, [activeColor])
 
   // Build CSS filter from channel states (cosmetic approximation)
   const channelFilter = (() => {
@@ -170,19 +197,87 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
       // Clear cursor readout when pointer leaves the canvas
       viewer.addHandler('canvas-exit', () => setCursorPos(null))
 
-      // Click-to-annotate: preventDefaultAction suppresses OSD zoom-on-click
-      viewer.addHandler('canvas-click', (event: any) => {
+      // canvas-press: start drawing a new annotation
+      viewer.addHandler('canvas-press', (event: any) => {
         if (!annotationModeRef.current) return
         event.preventDefaultAction = true
         const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
+        drawingRef.current = {
+          startImgX: pt.x,
+          startImgY: pt.y,
+          hasDragged: false,
+          freehandPoints: [{ x: pt.x, y: pt.y }],
+        }
+        setGhostShape({
+          startImgX: pt.x,
+          startImgY: pt.y,
+          currentImgX: pt.x,
+          currentImgY: pt.y,
+          shape: annotationShapeRef.current,
+          color: activeColorRef.current,
+          freehandPoints: [{ x: pt.x, y: pt.y }],
+        })
+      })
+
+      // canvas-drag: update ghost shape as pointer moves
+      viewer.addHandler('canvas-drag', (event: any) => {
+        if (!annotationModeRef.current || !drawingRef.current) return
+        event.preventDefaultAction = true
+        const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
+        drawingRef.current.hasDragged = true
+        if (annotationShapeRef.current === 'freehand') {
+          drawingRef.current.freehandPoints.push({ x: pt.x, y: pt.y })
+          setGhostShape((prev) =>
+            prev
+              ? { ...prev, currentImgX: pt.x, currentImgY: pt.y, freehandPoints: [...drawingRef.current!.freehandPoints] }
+              : null,
+          )
+        } else {
+          setGhostShape((prev) => (prev ? { ...prev, currentImgX: pt.x, currentImgY: pt.y } : null))
+        }
+      })
+
+      // canvas-release: commit the annotation
+      viewer.addHandler('canvas-release', (event: any) => {
+        if (!annotationModeRef.current || !drawingRef.current) return
+        event.preventDefaultAction = true
+        const { startImgX, startImgY, hasDragged, freehandPoints } = drawingRef.current
+        const shape = annotationShapeRef.current
+        const color = activeColorRef.current
+        const label = annotationLabelRef.current
+
+        let radius = DEFAULT_RADIUS
+        let points: { x: number; y: number }[] | undefined
+
+        if (shape === 'freehand') {
+          points = freehandPoints.length > 1 ? freehandPoints : undefined
+        } else if (shape !== 'pin' && hasDragged) {
+          const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
+          const dx = pt.x - startImgX
+          const dy = pt.y - startImgY
+          radius = Math.max(Math.sqrt(dx * dx + dy * dy), 5)
+        }
+
         addAnnotation({
           id: crypto.randomUUID(),
           type: 'point',
-          imageCoords: { x: pt.x, y: pt.y },
-          label: annotationLabelRef.current,
-          color: LABEL_COLOR_MAP[annotationLabelRef.current],
+          shape,
+          imageCoords: { x: startImgX, y: startImgY },
+          radius,
+          points,
+          label,
+          color,
           createdAt: Date.now(),
         })
+
+        drawingRef.current = null
+        setGhostShape(null)
+      })
+
+      // canvas-click: suppress OSD zoom-on-click in annotation mode
+      viewer.addHandler('canvas-click', (event: any) => {
+        if (!annotationModeRef.current) return
+        event.preventDefaultAction = true
       })
     }
 
@@ -209,18 +304,18 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   }, [tilesUrlKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Marker drag handlers ────────────────────────────────────────────────────
-  // Uses setPointerCapture so move/up events fire on the circle even if pointer
+  // Uses setPointerCapture so move/up events fire on the shape even if pointer
   // leaves it. Converts SVG pointer coords → image coords via inverse of <g> transform.
   const svgTransformRef = useRef(svgTransform)
   useEffect(() => { svgTransformRef.current = svgTransform }, [svgTransform])
 
   const handleMarkerPointerDown = useCallback((
     ann: Annotation,
-    e: React.PointerEvent<SVGCircleElement>,
+    e: React.PointerEvent<any>,
   ) => {
     if (deleteMode || annotationMode) return
     e.stopPropagation()
-    ;(e.target as SVGCircleElement).setPointerCapture(e.pointerId)
+    ;(e.target as Element).setPointerCapture(e.pointerId)
     setDragState({ id: ann.id, imgX: ann.imageCoords.x, imgY: ann.imageCoords.y })
     // Disable OSD pan while dragging
     viewerRef.current?.setMouseNavEnabled(false)
@@ -228,10 +323,10 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
 
   const handleMarkerPointerMove = useCallback((
     id: string,
-    e: React.PointerEvent<SVGCircleElement>,
+    e: React.PointerEvent<any>,
   ) => {
     if (!dragState || dragState.id !== id) return
-    const svg = (e.target as SVGCircleElement).ownerSVGElement!
+    const svg = (e.target as SVGElement).ownerSVGElement!
     const rect = svg.getBoundingClientRect()
     const svgX = e.clientX - rect.left
     const svgY = e.clientY - rect.top
@@ -240,10 +335,10 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   }, [dragState])
 
   const handleMarkerPointerUp = useCallback((
-    e: React.PointerEvent<SVGCircleElement>,
+    e: React.PointerEvent<any>,
   ) => {
     if (!dragState) return
-    ;(e.target as SVGCircleElement).releasePointerCapture(e.pointerId)
+    ;(e.target as Element).releasePointerCapture(e.pointerId)
     updateAnnotationCoords(dragState.id, dragState.imgX, dragState.imgY)
     setDragState(null)
     viewerRef.current?.setMouseNavEnabled(!annotationMode)
@@ -258,16 +353,193 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const pxX = Math.round(center.x * imageWidth)
   const pxY = Math.round(center.y * imageHeight)
 
-  // Scale-compensated sizes keep markers visually constant across zoom levels
   const scale = Math.max(svgTransform.scale, 0.001)
-  const markerR = 6 / scale
-  const markerSW = 1.5 / scale
+  // Scale-compensated stroke keeps lines visually thin at all zoom levels
+  const markerSW = 2 / scale
   const markerSWHovered = 3 / scale
 
   // Active mode for top indicator
   const activeModeLabel = deleteMode ? 'Delete Mode' : annotationMode ? 'Annotation Mode' : null
   const activeModeColor = deleteMode ? '#f87171' : '#22d3ee'
   const activeModeRingColor = deleteMode ? 'rgba(248,113,113,0.4)' : 'rgba(34,211,238,0.4)'
+
+  // ── Shape renderers ─────────────────────────────────────────────────────────
+  const renderShape = (ann: Annotation, isDragging: boolean, isHovered: boolean) => {
+    const cx = isDragging ? dragState!.imgX : ann.imageCoords.x
+    const cy = isDragging ? dragState!.imgY : ann.imageCoords.y
+    const r = (ann.radius ?? DEFAULT_RADIUS) * (isHovered || isDragging ? 1.15 : 1)
+    const sw = (isHovered || isDragging) ? markerSWHovered : markerSW
+    const stroke = deleteMode ? '#f87171' : ann.color
+    const strokeDasharray = deleteMode ? `${4 / scale} ${4 / scale}` : undefined
+    const filter = (isHovered || isDragging) ? 'url(#marker-glow-pulse)' : 'url(#marker-glow)'
+    const cursor = deleteMode ? 'not-allowed' : isDragging ? 'grabbing' : 'grab'
+
+    const sharedStyle = {
+      pointerEvents: 'all' as const,
+      cursor,
+      transformBox: 'fill-box' as const,
+      transformOrigin: 'center' as const,
+    }
+    const motionAnim = {
+      initial: { scale: 0, opacity: 0 },
+      animate: { scale: 1, opacity: 1 },
+      exit: { scale: 0, opacity: 0 },
+      transition: { type: 'spring', stiffness: 380, damping: 22 },
+    }
+    const eventHandlers = {
+      onPointerDown: (e: React.PointerEvent<any>) => handleMarkerPointerDown(ann, e),
+      onPointerMove: (e: React.PointerEvent<any>) => handleMarkerPointerMove(ann.id, e),
+      onPointerUp: (e: React.PointerEvent<any>) => handleMarkerPointerUp(e),
+      onClick: () => handleMarkerClick(ann),
+    }
+
+    if (ann.shape === 'square') {
+      return (
+        <motion.rect
+          key={ann.id}
+          x={cx - r} y={cy - r}
+          width={r * 2} height={r * 2}
+          rx={1 / scale}
+          fill="none"
+          stroke={stroke} strokeWidth={sw} strokeDasharray={strokeDasharray}
+          filter={filter}
+          style={sharedStyle}
+          {...motionAnim}
+          {...eventHandlers}
+        />
+      )
+    }
+
+    if (ann.shape === 'pin') {
+      // Teardrop: rounded head at top, pointed tip below center
+      const ph = r * 0.7
+      const headCy = cy - r * 0.2
+      const tipY = cy + r * 1.1
+      const d = `M ${cx - ph * 0.55} ${headCy} A ${ph} ${ph} 0 1 1 ${cx + ph * 0.55} ${headCy} L ${cx} ${tipY} Z`
+      return (
+        <motion.path
+          key={ann.id}
+          d={d}
+          fill="none"
+          stroke={stroke} strokeWidth={sw} strokeDasharray={strokeDasharray}
+          strokeLinejoin="round"
+          filter={filter}
+          style={sharedStyle}
+          {...motionAnim}
+          {...eventHandlers}
+        />
+      )
+    }
+
+    if (ann.shape === 'freehand') {
+      const pts = ann.points ?? []
+      if (pts.length < 2) {
+        // Degenerate: render a dot
+        return (
+          <motion.circle
+            key={ann.id}
+            cx={cx} cy={cy} r={r}
+            fill="none"
+            stroke={stroke} strokeWidth={sw} strokeDasharray={strokeDasharray}
+            filter={filter}
+            style={sharedStyle}
+            {...motionAnim}
+            {...eventHandlers}
+          />
+        )
+      }
+      const d = `M ${pts[0].x} ${pts[0].y} ` + pts.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ')
+      return (
+        <motion.path
+          key={ann.id}
+          d={d}
+          fill="none"
+          stroke={stroke} strokeWidth={sw} strokeDasharray={strokeDasharray}
+          strokeLinecap="round" strokeLinejoin="round"
+          filter={filter}
+          style={sharedStyle}
+          {...motionAnim}
+          {...eventHandlers}
+        />
+      )
+    }
+
+    // Default: circle
+    return (
+      <motion.circle
+        key={ann.id}
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke={stroke} strokeWidth={sw} strokeDasharray={strokeDasharray}
+        filter={filter}
+        style={sharedStyle}
+        {...motionAnim}
+        {...eventHandlers}
+      />
+    )
+  }
+
+  // Ghost shape — dashed preview during active draw
+  const renderGhost = () => {
+    if (!ghostShape || svgTransform.scale === 0) return null
+    const { startImgX, startImgY, currentImgX, currentImgY, shape, color, freehandPoints } = ghostShape
+    const dx = currentImgX - startImgX
+    const dy = currentImgY - startImgY
+    const ghostR = Math.max(Math.sqrt(dx * dx + dy * dy), 5)
+    const sw = 1.5 / scale
+    const dashArray = `${4 / scale} ${3 / scale}`
+
+    if (shape === 'square') {
+      return (
+        <rect
+          x={startImgX - ghostR} y={startImgY - ghostR}
+          width={ghostR * 2} height={ghostR * 2}
+          rx={1 / scale}
+          fill="none"
+          stroke={color} strokeWidth={sw} strokeDasharray={dashArray}
+          opacity={0.65}
+        />
+      )
+    }
+
+    if (shape === 'pin') {
+      return (
+        <circle
+          cx={startImgX} cy={startImgY}
+          r={DEFAULT_RADIUS}
+          fill="none"
+          stroke={color} strokeWidth={sw} strokeDasharray={dashArray}
+          opacity={0.65}
+        />
+      )
+    }
+
+    if (shape === 'freehand') {
+      if (freehandPoints.length < 2) return null
+      const d = `M ${freehandPoints[0].x} ${freehandPoints[0].y} ` +
+        freehandPoints.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ')
+      return (
+        <path
+          d={d}
+          fill="none"
+          stroke={color} strokeWidth={sw}
+          strokeLinecap="round" strokeLinejoin="round"
+          opacity={0.7}
+        />
+      )
+    }
+
+    // Circle ghost
+    return (
+      <circle
+        cx={startImgX} cy={startImgY}
+        r={ghostR}
+        fill="none"
+        stroke={color} strokeWidth={sw} strokeDasharray={dashArray}
+        opacity={0.65}
+      />
+    )
+  }
 
   return (
     <div className="relative flex-1 overflow-hidden bg-[#020617]">
@@ -338,40 +610,12 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
               {annotations.map((ann) => {
                 const isHovered = hoveredAnnotationId === ann.id
                 const isDragging = dragState?.id === ann.id
-                const cx = isDragging ? dragState.imgX : ann.imageCoords.x
-                const cy = isDragging ? dragState.imgY : ann.imageCoords.y
-                const r = (isHovered || isDragging) ? markerR * 1.35 : markerR
-                const sw = (isHovered || isDragging) ? markerSWHovered : markerSW
-                return (
-                  <motion.circle
-                    key={ann.id}
-                    cx={cx}
-                    cy={cy}
-                    r={r}
-                    fill={ann.color}
-                    fillOpacity={isDragging ? 0.8 : isHovered ? 0.6 : 0.45}
-                    stroke={deleteMode ? '#f87171' : ann.color}
-                    strokeWidth={sw}
-                    strokeDasharray={deleteMode ? `${4 / scale} ${4 / scale}` : undefined}
-                    filter={(isHovered || isDragging) ? 'url(#marker-glow-pulse)' : 'url(#marker-glow)'}
-                    style={{
-                      pointerEvents: 'all',
-                      cursor: deleteMode ? 'not-allowed' : isDragging ? 'grabbing' : 'grab',
-                      transformBox: 'fill-box',
-                      transformOrigin: 'center',
-                    }}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    transition={{ type: 'spring', stiffness: 380, damping: 22 }}
-                    onPointerDown={(e) => handleMarkerPointerDown(ann, e)}
-                    onPointerMove={(e) => handleMarkerPointerMove(ann.id, e)}
-                    onPointerUp={handleMarkerPointerUp}
-                    onClick={() => handleMarkerClick(ann)}
-                  />
-                )
+                return renderShape(ann, isDragging, isHovered)
               })}
             </AnimatePresence>
+
+            {/* Ghost shape preview during active draw */}
+            {renderGhost()}
           </g>
         </svg>
       )}

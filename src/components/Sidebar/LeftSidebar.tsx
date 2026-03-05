@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   usePathologyStore,
@@ -6,6 +6,8 @@ import {
   toggleLeftSidebar,
   setAnnotationMode,
   setAnnotationLabel,
+  setAnnotationShape,
+  setActiveColor,
   clearAnnotations,
   setDeleteMode,
   setAiRunning,
@@ -18,6 +20,7 @@ import {
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
+import { uploadSlideFn } from '../../server/upload'
 
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
@@ -108,6 +111,8 @@ export default function LeftSidebar() {
   const channels = usePathologyStore((s) => s.channels)
   const annotationMode = usePathologyStore((s) => s.annotationMode)
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
+  const annotationShape = usePathologyStore((s) => s.annotationShape)
+  const activeColor = usePathologyStore((s) => s.activeColor)
   const annotations = usePathologyStore((s) => s.annotations)
   const deleteMode = usePathologyStore((s) => s.deleteMode)
   const aiRunning = usePathologyStore((s) => s.aiRunning)
@@ -120,6 +125,59 @@ export default function LeftSidebar() {
   const [channelOpen, setChannelOpen] = useState(true)
   const [toolsOpen, setToolsOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadedSlides, setUploadedSlides] = useState<typeof MOCK_SLIDES>([])
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadStatus('uploading')
+    setUploadError(null)
+
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const bytes = new Uint8Array(arrayBuffer)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i])
+      }
+      const base64 = btoa(binary)
+
+      const key = `slides/${Date.now()}-${file.name}`
+      const result = await uploadSlideFn({ data: { key, data: base64, contentType: file.type || 'application/octet-stream' } })
+
+      if (result.ok) {
+        setUploadStatus('done')
+        setUploadedSlides((prev) => [
+          ...prev,
+          {
+            id: result.key,
+            name: file.name.replace(/\.[^/.]+$/, ''),
+            date: new Date().toISOString().slice(0, 10),
+            protocol: 'Uploaded',
+          },
+        ])
+        setTimeout(() => setUploadStatus('idle'), 2500)
+      } else {
+        setUploadStatus('error')
+        setUploadError(result.error ?? 'Upload failed')
+      }
+    } catch (err) {
+      setUploadStatus('error')
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      // Reset input so the same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   const runAnalysis = async () => {
     if (aiRunning) return
@@ -199,7 +257,7 @@ export default function LeftSidebar() {
                 className="overflow-hidden"
               >
                 <ul className="pb-1">
-                  {MOCK_SLIDES.map((slide) => {
+                  {[...MOCK_SLIDES, ...uploadedSlides].map((slide) => {
                     const isActive = slide.id === activeSlideId
                     return (
                       <li
@@ -231,6 +289,57 @@ export default function LeftSidebar() {
                     )
                   })}
                 </ul>
+
+                {/* Upload button */}
+                <div className="px-3 pb-3 space-y-1.5">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                  <button
+                    onClick={handleUploadClick}
+                    disabled={uploadStatus === 'uploading'}
+                    className={`w-full flex items-center justify-center gap-2 rounded px-3 py-1.5 text-[11px] font-medium transition-all border ${
+                      uploadStatus === 'uploading'
+                        ? 'bg-slate-800/60 border-slate-700/40 text-slate-500 cursor-not-allowed'
+                        : uploadStatus === 'done'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                        : uploadStatus === 'error'
+                        ? 'bg-red-500/10 border-red-500/40 text-red-400'
+                        : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                    }`}
+                  >
+                    {uploadStatus === 'uploading' ? (
+                      <>
+                        <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#64748b" strokeWidth="1.5">
+                          <circle cx="6" cy="6" r="4.5" strokeOpacity="0.25" />
+                          <path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" />
+                        </svg>
+                        Uploading…
+                      </>
+                    ) : uploadStatus === 'done' ? (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Uploaded
+                      </>
+                    ) : (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M6 8V2M3 5l3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M1 10h10" strokeLinecap="round" />
+                        </svg>
+                        {uploadStatus === 'error' ? 'Retry Upload' : 'Upload Slide'}
+                      </>
+                    )}
+                  </button>
+                  {uploadStatus === 'error' && uploadError && (
+                    <p className="text-[10px] text-red-400 leading-snug">{uploadError}</p>
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -419,28 +528,76 @@ export default function LeftSidebar() {
                     </button>
                   </div>
 
-                  {/* Label picker */}
+                  {/* Shape picker */}
+                  <div className="space-y-1.5">
+                    <span className="pv-label text-[10px]">Shape</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {(
+                        [
+                          { id: 'circle' as const,   icon: <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.5" /> },
+                          { id: 'square' as const,   icon: <rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" /> },
+                          { id: 'pin' as const,      icon: <><circle cx="7" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M7 8v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></> },
+                          { id: 'freehand' as const, icon: <path d="M2 11 Q4 3 7 7 Q10 11 12 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /> },
+                        ]
+                      ).map(({ id, icon }) => {
+                        const active = annotationShape === id
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setAnnotationShape(id)}
+                            title={id.charAt(0).toUpperCase() + id.slice(1)}
+                            className="flex flex-col items-center gap-1 rounded py-1.5 text-[9px] font-medium transition-all border capitalize"
+                            style={{
+                              background: active ? 'rgba(34,211,238,0.12)' : 'rgba(30,41,59,0.6)',
+                              borderColor: active ? 'rgba(34,211,238,0.5)' : 'rgba(51,65,85,0.5)',
+                              color: active ? '#22d3ee' : '#64748b',
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">{icon}</svg>
+                            {id}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Color picker */}
+                  <div className="space-y-1.5">
+                    <span className="pv-label text-[10px]">Color</span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {['#f87171','#4ade80','#60a5fa','#fbbf24','#a78bfa','#f97316','#22d3ee','#94a3b8'].map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setActiveColor(c)}
+                          className="h-5 w-5 rounded-full transition-all"
+                          style={{
+                            background: c,
+                            outline: activeColor === c ? `2px solid ${c}` : '2px solid transparent',
+                            outlineOffset: '2px',
+                            boxShadow: activeColor === c ? `0 0 8px ${c}88` : 'none',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Label picker (classification — decoupled from color) */}
                   <div className="space-y-1.5">
                     <span className="pv-label text-[10px]">Label</span>
                     <div className="flex gap-1.5 flex-wrap">
-                      {ANNOTATION_LABELS.map(({ label, color }) => {
+                      {ANNOTATION_LABELS.map(({ label }) => {
                         const isActive = annotationLabel === label
                         return (
                           <button
                             key={label}
                             onClick={() => setAnnotationLabel(label)}
-                            className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-all border"
+                            className="rounded px-2 py-0.5 text-[10px] font-medium transition-all border"
                             style={{
-                              background: isActive ? `${color}22` : 'rgba(30,41,59,0.6)',
-                              borderColor: isActive ? `${color}66` : 'rgba(51,65,85,0.5)',
-                              color: isActive ? color : '#64748b',
-                              boxShadow: isActive ? `0 0 8px ${color}33` : 'none',
+                              background: isActive ? 'rgba(34,211,238,0.1)' : 'rgba(30,41,59,0.6)',
+                              borderColor: isActive ? 'rgba(34,211,238,0.4)' : 'rgba(51,65,85,0.5)',
+                              color: isActive ? '#22d3ee' : '#64748b',
                             }}
                           >
-                            <span
-                              className="h-1.5 w-1.5 rounded-full flex-shrink-0"
-                              style={{ background: color }}
-                            />
                             {label}
                           </button>
                         )
