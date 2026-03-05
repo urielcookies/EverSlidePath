@@ -11,7 +11,7 @@ export interface SlideMetadata {
   tissueType: string
   scanner: string
   fileSize: string
-  tilesUrl: string
+  tilesUrl: string | { type: string; url: string }
 }
 
 const MOCK_SLIDES: Record<string, SlideMetadata> = {
@@ -26,7 +26,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Breast Carcinoma',
     scanner: 'Aperio GT 450',
     fileSize: '4.2 GB',
-    tilesUrl: 'https://lib-test.library.ucla.edu/iiif/2/test%2Fbiopsy.jp2/info.json',
+    tilesUrl: { type: 'image', url: '/test-slide/sample.png' },
   },
   'slide-002': {
     id: 'slide-002',
@@ -39,7 +39,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Lung Adenocarcinoma',
     scanner: 'Leica Aperio CS2',
     fileSize: '2.8 GB',
-    tilesUrl: 'https://lib-test.library.ucla.edu/iiif/2/test%2Fbiopsy.jp2/info.json',
+    tilesUrl: { type: 'image', url: '/test-slide/sample.png' },
   },
   'slide-003': {
     id: 'slide-003',
@@ -52,7 +52,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Colorectal Adenocarcinoma',
     scanner: 'Hamamatsu NanoZoomer S360',
     fileSize: '5.7 GB',
-    tilesUrl: 'https://lib-test.library.ucla.edu/iiif/2/test%2Fbiopsy.jp2/info.json',
+    tilesUrl: { type: 'image', url: '/test-slide/sample.png' },
   },
 }
 

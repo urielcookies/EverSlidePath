@@ -24,7 +24,7 @@ interface DragState {
 }
 
 interface PathologyViewerProps {
-  tilesUrl: string
+  tilesUrl: string | { type: string; url: string }
 }
 
 export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
