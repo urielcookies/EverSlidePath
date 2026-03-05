@@ -151,28 +151,32 @@ export default function LeftSidebar() {
       }
       const base64 = btoa(binary)
 
+      const slideName = file.name.replace(/\.[^/.]+$/, '')
       const key = `slides/${Date.now()}-${file.name}`
-      const result = await uploadSlideFn({ data: { key, data: base64, contentType: file.type || 'application/octet-stream' } })
+      const result = await uploadSlideFn({
+        data: {
+          key,
+          data: base64,
+          contentType: file.type || 'application/octet-stream',
+          name: slideName,
+        },
+      })
 
-      if (result.ok) {
-        setUploadStatus('done')
-        setUploadedSlides((prev) => [
-          ...prev,
-          {
-            id: result.key,
-            name: file.name.replace(/\.[^/.]+$/, ''),
-            date: new Date().toISOString().slice(0, 10),
-            protocol: 'Uploaded',
-          },
-        ])
-        setTimeout(() => setUploadStatus('idle'), 2500)
-      } else {
-        setUploadStatus('error')
-        setUploadError(result.error ?? 'Upload failed')
-      }
+      setUploadStatus('done')
+      setUploadedSlides((prev) => [
+        ...prev,
+        {
+          id: result.key,
+          name: slideName,
+          date: new Date().toISOString().slice(0, 10),
+          protocol: 'Uploaded',
+        },
+      ])
+      setTimeout(() => setUploadStatus('idle'), 2500)
     } catch (err) {
       setUploadStatus('error')
-      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+      const msg = err instanceof Error ? err.message : 'Upload failed'
+      setUploadError(msg === 'R2_BINDING_MISSING' ? 'R2 bucket not bound — redeploy required' : msg)
     } finally {
       // Reset input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = ''
