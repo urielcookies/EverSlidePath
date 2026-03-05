@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { getDB } from './db'
 
 export interface SlideMetadata {
   id: string
@@ -68,3 +69,33 @@ export const fetchSlideMetadata = createServerFn({ method: 'GET' })
     return id
   })
   .handler(async ({ data: id }) => getSlideMetadata(id))
+
+// Returns all uploaded slides stored in D1
+export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
+  .handler(async (): Promise<SlideMetadata[]> => {
+    const db = getDB()
+    if (!db) return []
+    const result = await db
+      .prepare(`SELECT id, name, metadata_json FROM slides ORDER BY created_at DESC`)
+      .all<{ id: string; name: string; metadata_json: string }>()
+    return (result.results ?? []).map((row) => {
+      let r2Key = row.id
+      try {
+        const meta = JSON.parse(row.metadata_json)
+        if (meta.r2Key) r2Key = meta.r2Key
+      } catch {}
+      return {
+        id: row.id,
+        name: row.name,
+        scanDate: new Date().toISOString().slice(0, 10),
+        objectiveLens: '—',
+        micronsPerPixel: 0,
+        dimensions: { width: 1000, height: 1000 },
+        stainProtocol: 'Uploaded',
+        tissueType: '—',
+        scanner: '—',
+        fileSize: '—',
+        tilesUrl: { type: 'image', url: `/api/r2/${encodeURIComponent(r2Key)}` },
+      } satisfies SlideMetadata
+    })
+  })

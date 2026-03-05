@@ -1,25 +1,15 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getDB } from './db'
+import { getWorkerEnv } from './workerEnv'
 
 interface R2Bucket {
   put(key: string, value: ArrayBuffer, options?: { httpMetadata?: { contentType?: string } }): Promise<void>
 }
 
-interface CloudflareEnv {
-  ASSETS: R2Bucket
-}
-
-async function getAssets(): Promise<R2Bucket> {
-  try {
-    const mod = await import('cloudflare:env')
-    const env = ((mod as any).default ?? mod) as CloudflareEnv
-    if (!env?.ASSETS) throw new Error('R2_BINDING_MISSING')
-    return env.ASSETS
-  } catch (err) {
-    // Re-throw binding errors as-is so the handler surfaces them
-    if ((err as Error).message === 'R2_BINDING_MISSING') throw err
-    throw new Error('R2_BINDING_MISSING')
-  }
+function getAssets(): R2Bucket {
+  const bucket = getWorkerEnv()?.BUCKET as R2Bucket | undefined
+  if (!bucket) throw new Error('R2_BINDING_MISSING')
+  return bucket
 }
 
 interface UploadSlideInput {
@@ -39,7 +29,7 @@ export const uploadSlideFn = createServerFn({ method: 'POST' })
     return d
   })
   .handler(async ({ data }): Promise<{ ok: boolean; key: string; error?: string }> => {
-    const assets = await getAssets()
+    const assets = getAssets()
 
     const binary = atob(data.data)
     const bytes = new Uint8Array(binary.length)
@@ -52,7 +42,7 @@ export const uploadSlideFn = createServerFn({ method: 'POST' })
     })
 
     // Write slide metadata to D1 so it persists across sessions
-    const db = await getDB()
+    const db = getDB()
     if (db) {
       const meta = JSON.stringify({ r2Key: data.key, contentType: data.contentType })
       await db

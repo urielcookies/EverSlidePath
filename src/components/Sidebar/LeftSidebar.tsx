@@ -17,6 +17,7 @@ import {
   setAiError,
   addAnnotation,
   setActiveSlide,
+  addUploadedSlide,
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
@@ -126,10 +127,17 @@ export default function LeftSidebar() {
   const [toolsOpen, setToolsOpen] = useState(true)
   const [aiOpen, setAiOpen] = useState(true)
 
+  const uploadedSlideMetadata = usePathologyStore((s) => s.uploadedSlideMetadata)
+  const uploadedSlides = Object.values(uploadedSlideMetadata).map((m) => ({
+    id: m.id,
+    name: m.name,
+    date: m.scanDate,
+    protocol: m.stainProtocol,
+  }))
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [uploadedSlides, setUploadedSlides] = useState<typeof MOCK_SLIDES>([])
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -163,15 +171,19 @@ export default function LeftSidebar() {
       })
 
       setUploadStatus('done')
-      setUploadedSlides((prev) => [
-        ...prev,
-        {
-          id: result.key,
-          name: slideName,
-          date: new Date().toISOString().slice(0, 10),
-          protocol: 'Uploaded',
-        },
-      ])
+      addUploadedSlide({
+        id: result.key,
+        name: slideName,
+        scanDate: new Date().toISOString().slice(0, 10),
+        objectiveLens: '—',
+        micronsPerPixel: 0,
+        dimensions: { width: 1000, height: 1000 },
+        stainProtocol: 'Uploaded',
+        tissueType: '—',
+        scanner: '—',
+        fileSize: '—',
+        tilesUrl: { type: 'image', url: `/api/r2/${encodeURIComponent(result.key)}` },
+      })
       setTimeout(() => setUploadStatus('idle'), 2500)
     } catch (err) {
       setUploadStatus('error')

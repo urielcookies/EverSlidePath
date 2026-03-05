@@ -17,13 +17,6 @@ const config = defineConfig({
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     viteReact(),
   ],
-  build: {
-    rollupOptions: {
-      // cloudflare:env is a Cloudflare Workers runtime virtual module —
-      // leave it unresolved at build time; Workerd resolves it at runtime.
-      external: ['cloudflare:env'],
-    },
-  },
 })
 
 export default config

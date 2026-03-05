@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { getSlideMetadata } from '../server/slideMetadata'
+import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
 import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
@@ -13,6 +13,7 @@ import {
   loadAnnotations,
   setSyncStatus,
   setLastSavedAt,
+  setUploadedSlides,
   pathologyStore,
 } from '../store/pathologyStore'
 
@@ -161,7 +162,8 @@ function ViewerPage() {
   const { annotations: loaderAnnotations } = Route.useLoaderData()
   // Derive metadata client-side from active slide so navigation updates the TopBar/Viewer
   const activeSlideId = usePathologyStore((s) => s.activeSlideId)
-  const metadata = getSlideMetadata(activeSlideId)
+  const uploadedSlideMetadata = usePathologyStore((s) => s.uploadedSlideMetadata)
+  const metadata: SlideMetadata = uploadedSlideMetadata[activeSlideId] ?? getSlideMetadata(activeSlideId)
   const annotations = usePathologyStore((s) => s.annotations)
   const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
@@ -175,6 +177,8 @@ function ViewerPage() {
     if (loaderAnnotations.length > 0) {
       loadAnnotations(loaderAnnotations)
     }
+    // Fetch uploaded slides from D1
+    fetchUploadedSlidesFn().then(setUploadedSlides).catch(() => {})
     // Small delay so the initial loadAnnotations doesn't trip the save effect
     const t = setTimeout(() => { hasInitialized.current = true }, 100)
     return () => clearTimeout(t)

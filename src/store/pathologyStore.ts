@@ -1,6 +1,7 @@
 import { Store } from '@tanstack/store'
 import { useStore } from '@tanstack/react-store'
 import { getViewerInstance } from '../lib/viewerInstance'
+import type { SlideMetadata } from '../server/slideMetadata'
 
 export interface ChannelState {
   visible: boolean
@@ -25,6 +26,7 @@ export interface Annotation {
 
 export interface PathologyState {
   activeSlideId: string
+  uploadedSlideMetadata: Record<string, SlideMetadata>
   zoomLevel: number
   viewportCenter: { x: number; y: number }
   channels: {
@@ -57,6 +59,7 @@ const defaultChannel = (intensity: number): ChannelState => ({
 
 export const pathologyStore = new Store<PathologyState>({
   activeSlideId: 'slide-001',
+  uploadedSlideMetadata: {},
   zoomLevel: 1,
   viewportCenter: { x: 0.5, y: 0.5 },
   channels: {
@@ -195,4 +198,17 @@ export function updateAnnotationCoords(id: string, x: number, y: number): void {
 
 export function loadAnnotations(anns: Annotation[]): void {
   pathologyStore.setState((prev) => ({ ...prev, annotations: anns }))
+}
+
+export function addUploadedSlide(meta: SlideMetadata): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    uploadedSlideMetadata: { ...prev.uploadedSlideMetadata, [meta.id]: meta },
+  }))
+}
+
+export function setUploadedSlides(slides: SlideMetadata[]): void {
+  const map: Record<string, SlideMetadata> = {}
+  for (const s of slides) map[s.id] = s
+  pathologyStore.setState((prev) => ({ ...prev, uploadedSlideMetadata: map }))
 }
