@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getDB } from './db'
+import { getWorkerEnv } from './workerEnv'
 
 export interface SlideMetadata {
   id: string
@@ -98,4 +99,38 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
         tilesUrl: { type: 'image', url: `/api/r2/${encodeURIComponent(r2Key)}` },
       } satisfies SlideMetadata
     })
+  })
+
+// Deletes an uploaded slide from D1 and R2
+export const deleteUploadedSlideFn = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => {
+    const d = data as { id: string }
+    if (typeof d?.id !== 'string') throw new Error('id required')
+    return d
+  })
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const db = getDB()
+    if (!db) return { ok: false }
+
+    // Get r2Key from stored metadata
+    const row = await db
+      .prepare('SELECT metadata_json FROM slides WHERE id = ?')
+      .bind(data.id)
+      .first<{ metadata_json: string }>()
+
+    // Delete from R2
+    const env = getWorkerEnv()
+    if (env?.BUCKET) {
+      try {
+        let r2Key = data.id
+        if (row?.metadata_json) {
+          const meta = JSON.parse(row.metadata_json)
+          if (meta.r2Key) r2Key = meta.r2Key
+        }
+        await env.BUCKET.delete(r2Key)
+      } catch { /* ignore R2 errors */ }
+    }
+
+    await db.prepare('DELETE FROM slides WHERE id = ?').bind(data.id).run()
+    return { ok: true }
   })

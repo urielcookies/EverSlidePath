@@ -4,6 +4,7 @@ import type { D1Database } from './db'
 interface R2Bucket {
   put(key: string, value: ArrayBuffer, options?: { httpMetadata?: { contentType?: string } }): Promise<void>
   get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>
+  delete(key: string): Promise<void>
 }
 
 export interface WorkerBindings {

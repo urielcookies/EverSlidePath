@@ -1,6 +1,5 @@
 import { Store } from '@tanstack/store'
 import { useStore } from '@tanstack/react-store'
-import { getViewerInstance } from '../lib/viewerInstance'
 import type { SlideMetadata } from '../server/slideMetadata'
 
 export interface ChannelState {
@@ -20,6 +19,7 @@ export interface Annotation {
   radius: number
   points?: { x: number; y: number }[]
   label: AnnotationLabel
+  name?: string
   color: string
   createdAt: number
 }
@@ -46,6 +46,7 @@ export interface PathologyState {
   aiThreshold: number
   aiInferenceTime: number | null
   aiError: string | null
+  annotationCustomName: string
   syncStatus: 'idle' | 'saving' | 'saved' | 'error'
   lastSavedAt: number | null
   deleteMode: boolean
@@ -79,6 +80,7 @@ export const pathologyStore = new Store<PathologyState>({
   aiThreshold: 0.45,
   aiInferenceTime: null,
   aiError: null,
+  annotationCustomName: '',
   syncStatus: 'idle',
   lastSavedAt: null,
   deleteMode: false,
@@ -117,10 +119,6 @@ export function toggleLeftSidebar(): void {
 }
 
 export function setAnnotationMode(active: boolean): void {
-  const viewer = getViewerInstance()
-  if (viewer) {
-    viewer.setMouseNavEnabled(!active)
-  }
   pathologyStore.setState((prev) => ({ ...prev, annotationMode: active }))
 }
 
@@ -185,6 +183,18 @@ export function setLastSavedAt(v: number | null): void {
 
 export function setDeleteMode(v: boolean): void {
   pathologyStore.setState((prev) => ({ ...prev, deleteMode: v }))
+}
+
+export function setAnnotationCustomName(name: string): void {
+  pathologyStore.setState((prev) => ({ ...prev, annotationCustomName: name }))
+}
+
+export function removeUploadedSlide(id: string): void {
+  pathologyStore.setState((prev) => {
+    const next = { ...prev.uploadedSlideMetadata }
+    delete next[id]
+    return { ...prev, uploadedSlideMetadata: next }
+  })
 }
 
 export function updateAnnotationCoords(id: string, x: number, y: number): void {

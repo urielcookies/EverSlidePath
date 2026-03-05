@@ -15,6 +15,7 @@ interface AnnotationRow {
   radius: number | null
   color: string | null
   points_json: string | null
+  name: string | null
   confidence: number | null
   session_metadata_json: string | null
   created_at: number
@@ -35,6 +36,7 @@ function rowToAnnotation(row: AnnotationRow): Annotation {
     radius: row.radius ?? 20,
     points,
     label,
+    name: row.name ?? undefined,
     color: row.color ?? LABEL_COLOR_MAP[label] ?? '#94a3b8',
     createdAt: row.created_at,
   }
@@ -86,8 +88,8 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
     // Bulk upsert — D1 batch runs all statements in one transaction
     const stmts = data.annotations.map((ann) =>
       db.prepare(`
-        INSERT INTO annotations (id, slide_id, type, label, x, y, shape, radius, color, points_json, confidence, session_metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO annotations (id, slide_id, type, label, x, y, shape, radius, color, points_json, name, confidence, session_metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           label       = excluded.label,
           x           = excluded.x,
@@ -96,6 +98,7 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
           radius      = excluded.radius,
           color       = excluded.color,
           points_json = excluded.points_json,
+          name        = excluded.name,
           confidence  = excluded.confidence
       `).bind(
         ann.id,
@@ -108,6 +111,7 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
         ann.radius ?? 20,
         ann.color,
         ann.points ? JSON.stringify(ann.points) : null,
+        ann.name ?? null,
         null,
         sessionJson,
         ann.createdAt,

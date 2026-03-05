@@ -18,10 +18,13 @@ import {
   addAnnotation,
   setActiveSlide,
   addUploadedSlide,
+  setAnnotationCustomName,
+  removeUploadedSlide,
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
 import { uploadSlideFn } from '../../server/upload'
+import { deleteUploadedSlideFn } from '../../server/slideMetadata'
 
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
@@ -114,6 +117,7 @@ export default function LeftSidebar() {
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
   const annotationShape = usePathologyStore((s) => s.annotationShape)
   const activeColor = usePathologyStore((s) => s.activeColor)
+  const annotationCustomName = usePathologyStore((s) => s.annotationCustomName)
   const annotations = usePathologyStore((s) => s.annotations)
   const deleteMode = usePathologyStore((s) => s.deleteMode)
   const aiRunning = usePathologyStore((s) => s.aiRunning)
@@ -233,6 +237,19 @@ export default function LeftSidebar() {
     }
   }
 
+  const [confirmDeleteSlideId, setConfirmDeleteSlideId] = useState<string | null>(null)
+
+  const handleDeleteSlide = async (id: string) => {
+    if (confirmDeleteSlideId === id) {
+      removeUploadedSlide(id)
+      setConfirmDeleteSlideId(null)
+      deleteUploadedSlideFn({ data: { id } }).catch(console.error)
+    } else {
+      setConfirmDeleteSlideId(id)
+      setTimeout(() => setConfirmDeleteSlideId(null), 2500)
+    }
+  }
+
   return (
     <motion.aside
       animate={{ width: isOpen ? 280 : 0 }}
@@ -273,7 +290,7 @@ export default function LeftSidebar() {
                 className="overflow-hidden"
               >
                 <ul className="pb-1">
-                  {[...MOCK_SLIDES, ...uploadedSlides].map((slide) => {
+                  {MOCK_SLIDES.map((slide) => {
                     const isActive = slide.id === activeSlideId
                     return (
                       <li
@@ -300,6 +317,54 @@ export default function LeftSidebar() {
                           >
                             {slide.protocol}
                           </span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                  {uploadedSlides.map((slide) => {
+                    const isActive = slide.id === activeSlideId
+                    const confirmingDelete = confirmDeleteSlideId === slide.id
+                    return (
+                      <li
+                        key={slide.id}
+                        className={`mx-2 mb-0.5 rounded transition-colors ${
+                          isActive
+                            ? 'border-l-2 border-cyan-400 bg-slate-800/60'
+                            : 'border-l-2 border-transparent hover:bg-slate-800/30'
+                        }`}
+                      >
+                        <div
+                          className={`flex items-start justify-between px-2 py-2 cursor-pointer ${isActive ? 'pl-[6px]' : ''}`}
+                          onClick={() => setActiveSlide(slide.id)}
+                        >
+                          <div className="min-w-0">
+                            <p className="pv-value text-xs font-medium text-slate-200 truncate">
+                              {slide.name}
+                            </p>
+                            <div className="mt-0.5 flex items-center gap-2">
+                              <span className="pv-label text-[10px]">{slide.date}</span>
+                              <span
+                                className="rounded px-1 py-px text-[9px] font-medium font-mono"
+                                style={{
+                                  background: 'rgba(34, 211, 238, 0.12)',
+                                  color: '#22d3ee',
+                                  border: '1px solid rgba(34, 211, 238, 0.2)',
+                                }}
+                              >
+                                {slide.protocol}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSlide(slide.id) }}
+                            className={`ml-1 flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium transition-all border ${
+                              confirmingDelete
+                                ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                                : 'bg-transparent border-transparent text-slate-600 hover:text-red-400 hover:border-red-500/40'
+                            }`}
+                          >
+                            {confirmingDelete ? 'Confirm?' : '✕'}
+                          </button>
                         </div>
                       </li>
                     )
@@ -619,6 +684,19 @@ export default function LeftSidebar() {
                         )
                       })}
                     </div>
+                  </div>
+
+                  {/* Custom annotation name */}
+                  <div className="space-y-1.5">
+                    <span className="pv-label text-[10px]">Custom Name <span className="text-slate-600">(optional)</span></span>
+                    <input
+                      type="text"
+                      value={annotationCustomName}
+                      onChange={(e) => setAnnotationCustomName(e.target.value)}
+                      placeholder="e.g. Ki67+, Mitosis…"
+                      maxLength={64}
+                      className="w-full rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-200 placeholder-slate-600 outline-none focus:border-cyan-500/50 focus:ring-0 transition-colors"
+                    />
                   </div>
 
                   {/* Count + Clear row */}

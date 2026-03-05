@@ -54,6 +54,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const annotationLabelRef = useRef<AnnotationLabel>('Tumor')
   const annotationShapeRef = useRef<AnnotationShape>('circle')
   const activeColorRef = useRef('#f87171')
+  const annotationCustomNameRef = useRef('')
   const drawingRef = useRef<DrawingState | null>(null)
 
   // scale=0 on init so SVG stays hidden until OSD fires update-viewport
@@ -74,6 +75,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
   const annotationShape = usePathologyStore((s) => s.annotationShape)
   const activeColor = usePathologyStore((s) => s.activeColor)
+  const annotationCustomName = usePathologyStore((s) => s.annotationCustomName)
   const annotations = usePathologyStore((s) => s.annotations)
   const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
   const deleteMode = usePathologyStore((s) => s.deleteMode)
@@ -85,6 +87,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   useEffect(() => { annotationLabelRef.current = annotationLabel }, [annotationLabel])
   useEffect(() => { annotationShapeRef.current = annotationShape }, [annotationShape])
   useEffect(() => { activeColorRef.current = activeColor }, [activeColor])
+  useEffect(() => { annotationCustomNameRef.current = annotationCustomName }, [annotationCustomName])
 
   // Build CSS filter from channel states (cosmetic approximation)
   const channelFilter = (() => {
@@ -227,9 +230,11 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
         drawingRef.current.hasDragged = true
         if (annotationShapeRef.current === 'freehand') {
           drawingRef.current.freehandPoints.push({ x: pt.x, y: pt.y })
+          // Capture points before the updater runs (drawingRef may be null by then)
+          const capturedPoints = [...drawingRef.current.freehandPoints]
           setGhostShape((prev) =>
             prev
-              ? { ...prev, currentImgX: pt.x, currentImgY: pt.y, freehandPoints: [...drawingRef.current!.freehandPoints] }
+              ? { ...prev, currentImgX: pt.x, currentImgY: pt.y, freehandPoints: capturedPoints }
               : null,
           )
         } else {
@@ -266,6 +271,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
           radius,
           points,
           label,
+          name: annotationCustomNameRef.current || undefined,
           color,
           createdAt: Date.now(),
         })
