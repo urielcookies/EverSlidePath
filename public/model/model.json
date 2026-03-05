@@ -1,0 +1,56 @@
+{
+  "format": "layers-model",
+  "generatedBy": "PathShare AI Engine v1.0",
+  "convertedBy": null,
+  "modelTopology": {
+    "class_name": "Sequential",
+    "config": {
+      "name": "pathshare_linear_seg",
+      "layers": [
+        {
+          "class_name": "InputLayer",
+          "config": {
+            "batch_input_shape": [null, 256, 256, 3],
+            "dtype": "float32",
+            "sparse": false,
+            "ragged": false,
+            "name": "input_1"
+          }
+        },
+        {
+          "class_name": "Conv2D",
+          "config": {
+            "name": "conv2d",
+            "trainable": false,
+            "dtype": "float32",
+            "filters": 1,
+            "kernel_size": [1, 1],
+            "strides": [1, 1],
+            "padding": "same",
+            "data_format": "channels_last",
+            "dilation_rate": [1, 1],
+            "groups": 1,
+            "activation": "sigmoid",
+            "use_bias": true,
+            "kernel_initializer": {"class_name": "Zeros", "config": {}},
+            "bias_initializer": {"class_name": "Zeros", "config": {}},
+            "kernel_regularizer": null,
+            "bias_regularizer": null,
+            "activity_regularizer": null,
+            "kernel_constraint": null,
+            "bias_constraint": null
+          }
+        }
+      ]
+    }
+  },
+  "weightsManifest": [
+    {
+      "paths": ["group1-shard1of1.bin"],
+      "weights": [
+        {"name": "conv2d/kernel", "shape": [1, 1, 3, 1], "dtype": "float32"},
+        {"name": "conv2d/bias",   "shape": [1],           "dtype": "float32"}
+      ]
+    }
+  ]
+}

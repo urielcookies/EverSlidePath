@@ -38,11 +38,16 @@ interface CloudflareEnv {
  */
 export async function getDB(): Promise<D1Database | null> {
   try {
-    // `cloudflare:env` virtual module — provided by @cloudflare/vite-plugin v1.x
-    const env = (await import('cloudflare:env')) as CloudflareEnv
+    // `cloudflare:env` — @cloudflare/vite-plugin v1.x virtual module.
+    // Bindings may be on mod.default (older) or as named exports (newer).
+    const mod = await import('cloudflare:env')
+    const env = ((mod as any).default ?? mod) as CloudflareEnv
+    if (!env?.DB) {
+      console.error('[db] D1 binding "DB" not found in cloudflare:env. Available keys:', Object.keys(mod).join(', '))
+    }
     return env?.DB ?? null
-  } catch {
-    // Running in Vite dev server without wrangler (no Cloudflare context)
+  } catch (err) {
+    console.error('[db] cloudflare:env import failed:', String(err))
     return null
   }
 }

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { getSlideMetadata, type SlideMetadata } from '../server/slideMetadata'
+import { getSlideMetadata } from '../server/slideMetadata'
+import type { SlideMetadata } from '../server/slideMetadata'
 import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
 import RightSidebar from '../components/Sidebar/RightSidebar'
@@ -157,7 +158,10 @@ function Chip({ label, accent = false }: { label: string; accent?: boolean }) {
 
 // ─── ViewerPage ───────────────────────────────────────────────────────────────
 function ViewerPage() {
-  const { metadata, annotations: loaderAnnotations } = Route.useLoaderData()
+  const { annotations: loaderAnnotations } = Route.useLoaderData()
+  // Derive metadata client-side from active slide so navigation updates the TopBar/Viewer
+  const activeSlideId = usePathologyStore((s) => s.activeSlideId)
+  const metadata = getSlideMetadata(activeSlideId)
   const annotations = usePathologyStore((s) => s.annotations)
   const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
@@ -213,7 +217,11 @@ function ViewerPage() {
       <TopBar metadata={metadata} />
       <div className="flex flex-1 overflow-hidden">
         <LeftSidebar />
-        <PathologyViewer tilesUrl={metadata.tilesUrl} />
+        <PathologyViewer
+          tilesUrl={metadata.tilesUrl}
+          imageWidth={metadata.dimensions.width}
+          imageHeight={metadata.dimensions.height}
+        />
         <RightSidebar metadata={metadata} />
       </div>
     </div>

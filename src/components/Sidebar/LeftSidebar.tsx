@@ -14,6 +14,7 @@ import {
   setAiInferenceTime,
   setAiError,
   addAnnotation,
+  setActiveSlide,
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
@@ -203,6 +204,7 @@ export default function LeftSidebar() {
                     return (
                       <li
                         key={slide.id}
+                        onClick={() => setActiveSlide(slide.id)}
                         className={`mx-2 mb-0.5 cursor-pointer rounded px-2 py-2 transition-colors ${
                           isActive
                             ? 'border-l-2 border-cyan-400 bg-slate-800/60 pl-[6px]'

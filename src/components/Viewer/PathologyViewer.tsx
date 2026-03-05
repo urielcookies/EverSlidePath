@@ -25,9 +25,11 @@ interface DragState {
 
 interface PathologyViewerProps {
   tilesUrl: string | { type: string; url: string }
+  imageWidth: number
+  imageHeight: number
 }
 
-export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
+export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: PathologyViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<any>(null)
   const annotationModeRef = useRef(false)
@@ -182,6 +184,16 @@ export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
     }
   }, [])
 
+  // Re-open viewer when the tile source changes (slide navigation)
+  const tilesUrlKey = typeof tilesUrl === 'string' ? tilesUrl : `${tilesUrl.type}::${tilesUrl.url}`
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    if (!viewerRef.current) return
+    setTilesLoaded(false)
+    viewerRef.current.open(tilesUrl)
+  }, [tilesUrlKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Marker drag handlers ────────────────────────────────────────────────────
   // Uses setPointerCapture so move/up events fire on the circle even if pointer
   // leaves it. Converts SVG pointer coords → image coords via inverse of <g> transform.
@@ -229,8 +241,8 @@ export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
     deleteAnnotationFn({ data: { id: ann.id } }).catch(console.error)
   }, [deleteMode])
 
-  const pxX = Math.round(center.x * 46000)
-  const pxY = Math.round(center.y * 32914)
+  const pxX = Math.round(center.x * imageWidth)
+  const pxY = Math.round(center.y * imageHeight)
 
   // Scale-compensated sizes keep markers visually constant across zoom levels
   const scale = Math.max(svgTransform.scale, 0.001)

@@ -89,6 +89,10 @@ export function setChannel(name: ChannelName, partial: Partial<ChannelState>): v
   }))
 }
 
+export function setActiveSlide(id: string): void {
+  pathologyStore.setState((prev) => ({ ...prev, activeSlideId: id }))
+}
+
 export function setZoomLevel(zoom: number): void {
   pathologyStore.setState((prev) => ({ ...prev, zoomLevel: zoom }))
 }
