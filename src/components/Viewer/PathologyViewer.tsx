@@ -5,13 +5,23 @@ import {
   setZoomLevel,
   setViewportCenter,
   addAnnotation,
+  removeAnnotation,
+  updateAnnotationCoords,
   type AnnotationLabel,
+  type Annotation,
 } from '../../store/pathologyStore'
+import { setViewerInstance } from '../../lib/viewerInstance'
+import { LABEL_COLOR_MAP } from '../../lib/annotationConfig'
+import { deleteAnnotationFn } from '../../server/annotationFunctions'
 
 const RING_R = 28
 const RING_CIRC = 2 * Math.PI * RING_R
-import { setViewerInstance } from '../../lib/viewerInstance'
-import { LABEL_COLOR_MAP } from '../../lib/annotationConfig'
+
+interface DragState {
+  id: string
+  imgX: number
+  imgY: number
+}
 
 export default function PathologyViewer() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -21,6 +31,8 @@ export default function PathologyViewer() {
 
   // scale=0 on init so SVG stays hidden until OSD fires update-viewport
   const [svgTransform, setSvgTransform] = useState({ tx: 0, ty: 0, scale: 0 })
+  // Drag state — tracks the annotation being moved and its live image coords
+  const [dragState, setDragState] = useState<DragState | null>(null)
 
   const zoomLevel = usePathologyStore((s) => s.zoomLevel)
   const center = usePathologyStore((s) => s.viewportCenter)
@@ -29,6 +41,7 @@ export default function PathologyViewer() {
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
   const annotations = usePathologyStore((s) => s.annotations)
   const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
+  const deleteMode = usePathologyStore((s) => s.deleteMode)
   const aiRunning = usePathologyStore((s) => s.aiRunning)
   const aiProgress = usePathologyStore((s) => s.aiProgress)
 
@@ -150,13 +163,66 @@ export default function PathologyViewer() {
     }
   }, [])
 
+  // ── Marker drag handlers ────────────────────────────────────────────────────
+  // Uses setPointerCapture so move/up events fire on the circle even if pointer
+  // leaves it. Converts SVG pointer coords → image coords via inverse of <g> transform.
+  const svgTransformRef = useRef(svgTransform)
+  useEffect(() => { svgTransformRef.current = svgTransform }, [svgTransform])
+
+  const handleMarkerPointerDown = useCallback((
+    ann: Annotation,
+    e: React.PointerEvent<SVGCircleElement>,
+  ) => {
+    if (deleteMode || annotationMode) return
+    e.stopPropagation()
+    ;(e.target as SVGCircleElement).setPointerCapture(e.pointerId)
+    setDragState({ id: ann.id, imgX: ann.imageCoords.x, imgY: ann.imageCoords.y })
+    // Disable OSD pan while dragging
+    viewerRef.current?.setMouseNavEnabled(false)
+  }, [deleteMode, annotationMode])
+
+  const handleMarkerPointerMove = useCallback((
+    id: string,
+    e: React.PointerEvent<SVGCircleElement>,
+  ) => {
+    if (!dragState || dragState.id !== id) return
+    const svg = (e.target as SVGCircleElement).ownerSVGElement!
+    const rect = svg.getBoundingClientRect()
+    const svgX = e.clientX - rect.left
+    const svgY = e.clientY - rect.top
+    const { tx, ty, scale } = svgTransformRef.current
+    setDragState({ id, imgX: (svgX - tx) / scale, imgY: (svgY - ty) / scale })
+  }, [dragState])
+
+  const handleMarkerPointerUp = useCallback((
+    e: React.PointerEvent<SVGCircleElement>,
+  ) => {
+    if (!dragState) return
+    ;(e.target as SVGCircleElement).releasePointerCapture(e.pointerId)
+    updateAnnotationCoords(dragState.id, dragState.imgX, dragState.imgY)
+    setDragState(null)
+    viewerRef.current?.setMouseNavEnabled(!annotationMode)
+  }, [dragState, annotationMode])
+
+  const handleMarkerClick = useCallback((ann: Annotation) => {
+    if (!deleteMode) return
+    removeAnnotation(ann.id)
+    deleteAnnotationFn({ data: { id: ann.id } }).catch(console.error)
+  }, [deleteMode])
+
   const pxX = Math.round(center.x * 46000)
   const pxY = Math.round(center.y * 32914)
 
   // Scale-compensated sizes keep markers visually constant across zoom levels
-  const markerR = 6 / Math.max(svgTransform.scale, 0.001)
-  const markerSW = 1.5 / Math.max(svgTransform.scale, 0.001)
-  const markerSWHovered = 3 / Math.max(svgTransform.scale, 0.001)
+  const scale = Math.max(svgTransform.scale, 0.001)
+  const markerR = 6 / scale
+  const markerSW = 1.5 / scale
+  const markerSWHovered = 3 / scale
+
+  // Active mode for top indicator
+  const activeModeLabel = deleteMode ? 'Delete Mode' : annotationMode ? 'Annotation Mode' : null
+  const activeModeColor = deleteMode ? '#f87171' : '#22d3ee'
+  const activeModeRingColor = deleteMode ? 'rgba(248,113,113,0.4)' : 'rgba(34,211,238,0.4)'
 
   return (
     <div className="relative flex-1 overflow-hidden bg-[#020617]">
@@ -166,7 +232,7 @@ export default function PathologyViewer() {
         className="absolute inset-0"
         style={{
           filter: channelFilter,
-          cursor: annotationMode ? 'crosshair' : undefined,
+          cursor: deleteMode ? 'not-allowed' : annotationMode ? 'crosshair' : undefined,
         }}
       />
 
@@ -198,20 +264,26 @@ export default function PathologyViewer() {
             <AnimatePresence>
               {annotations.map((ann) => {
                 const isHovered = hoveredAnnotationId === ann.id
+                const isDragging = dragState?.id === ann.id
+                const cx = isDragging ? dragState.imgX : ann.imageCoords.x
+                const cy = isDragging ? dragState.imgY : ann.imageCoords.y
+                const r = (isHovered || isDragging) ? markerR * 1.35 : markerR
+                const sw = (isHovered || isDragging) ? markerSWHovered : markerSW
                 return (
                   <motion.circle
                     key={ann.id}
-                    cx={ann.imageCoords.x}
-                    cy={ann.imageCoords.y}
-                    r={isHovered ? markerR * 1.35 : markerR}
+                    cx={cx}
+                    cy={cy}
+                    r={r}
                     fill={ann.color}
-                    fillOpacity={isHovered ? 0.6 : 0.45}
-                    stroke={ann.color}
-                    strokeWidth={isHovered ? markerSWHovered : markerSW}
-                    filter={isHovered ? 'url(#marker-glow-pulse)' : 'url(#marker-glow)'}
+                    fillOpacity={isDragging ? 0.8 : isHovered ? 0.6 : 0.45}
+                    stroke={deleteMode ? '#f87171' : ann.color}
+                    strokeWidth={sw}
+                    strokeDasharray={deleteMode ? `${4 / scale} ${4 / scale}` : undefined}
+                    filter={(isHovered || isDragging) ? 'url(#marker-glow-pulse)' : 'url(#marker-glow)'}
                     style={{
                       pointerEvents: 'all',
-                      cursor: 'pointer',
+                      cursor: deleteMode ? 'not-allowed' : isDragging ? 'grabbing' : 'grab',
                       transformBox: 'fill-box',
                       transformOrigin: 'center',
                     }}
@@ -219,6 +291,10 @@ export default function PathologyViewer() {
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 0, opacity: 0 }}
                     transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                    onPointerDown={(e) => handleMarkerPointerDown(ann, e)}
+                    onPointerMove={(e) => handleMarkerPointerMove(ann.id, e)}
+                    onPointerUp={handleMarkerPointerUp}
+                    onClick={() => handleMarkerClick(ann)}
                   />
                 )
               })}
@@ -244,7 +320,7 @@ export default function PathologyViewer() {
               transition={{ duration: 1.6, ease: 'linear', repeat: Infinity }}
             />
 
-            {/* Frosted-glass vignette — dims tile during analysis */}
+            {/* Frosted-glass vignette */}
             <motion.div
               key="vignette"
               className="absolute inset-0 z-20 pointer-events-none"
@@ -266,20 +342,10 @@ export default function PathologyViewer() {
             >
               <div className="relative flex items-center justify-center">
                 <svg width="72" height="72" viewBox="0 0 72 72">
-                  {/* Track */}
-                  <circle
-                    cx="36" cy="36" r={RING_R}
-                    fill="none"
-                    stroke="rgba(34,211,238,0.12)"
-                    strokeWidth="3"
-                  />
-                  {/* Progress arc */}
+                  <circle cx="36" cy="36" r={RING_R} fill="none" stroke="rgba(34,211,238,0.12)" strokeWidth="3" />
                   <motion.circle
                     cx="36" cy="36" r={RING_R}
-                    fill="none"
-                    stroke="#22d3ee"
-                    strokeWidth="3"
-                    strokeLinecap="round"
+                    fill="none" stroke="#22d3ee" strokeWidth="3" strokeLinecap="round"
                     strokeDasharray={RING_CIRC}
                     animate={{ strokeDashoffset: RING_CIRC * (1 - aiProgress / 100) }}
                     initial={{ strokeDashoffset: RING_CIRC }}
@@ -323,27 +389,37 @@ export default function PathologyViewer() {
         </button>
       </div>
 
-      {/* Zoom badge — bottom left above controls */}
+      {/* Zoom badge */}
       <div className="absolute bottom-32 left-4 z-10">
         <span className="font-mono text-xs bg-slate-900/80 border border-slate-700/50 text-cyan-400 px-2 py-0.5 rounded">
           {zoomLevel.toFixed(1)}×
         </span>
       </div>
 
-      {/* Annotation mode indicator — top center */}
+      {/* Active mode indicator — top center */}
       <AnimatePresence>
-        {annotationMode && (
+        {activeModeLabel && (
           <motion.div
+            key={activeModeLabel}
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
             className="absolute top-3 left-1/2 z-10 -translate-x-1/2"
           >
-            <div className="flex items-center gap-2 rounded-full bg-slate-900/90 border border-cyan-500/40 px-3 py-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="font-mono text-[11px] text-cyan-400 tracking-widest uppercase">
-                Annotation Mode
+            <div
+              className="flex items-center gap-2 rounded-full bg-slate-900/90 px-3 py-1"
+              style={{ border: `1px solid ${activeModeRingColor}` }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full animate-pulse flex-shrink-0"
+                style={{ background: activeModeColor }}
+              />
+              <span
+                className="font-mono text-[11px] tracking-widest uppercase"
+                style={{ color: activeModeColor }}
+              >
+                {activeModeLabel}
               </span>
             </div>
           </motion.div>

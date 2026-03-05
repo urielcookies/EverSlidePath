@@ -7,6 +7,7 @@ import {
   setAnnotationMode,
   setAnnotationLabel,
   clearAnnotations,
+  setDeleteMode,
   setAiRunning,
   setAiProgress,
   setAiThreshold,
@@ -107,6 +108,7 @@ export default function LeftSidebar() {
   const annotationMode = usePathologyStore((s) => s.annotationMode)
   const annotationLabel = usePathologyStore((s) => s.annotationLabel)
   const annotations = usePathologyStore((s) => s.annotations)
+  const deleteMode = usePathologyStore((s) => s.deleteMode)
   const aiRunning = usePathologyStore((s) => s.aiRunning)
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
   const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
@@ -389,6 +391,29 @@ export default function LeftSidebar() {
                     >
                       <CrosshairIcon />
                       {annotationMode ? 'Active' : 'Enable'}
+                    </button>
+                  </div>
+
+                  {/* Delete mode toggle */}
+                  <div className="flex items-center justify-between">
+                    <span className="pv-label">Delete Mode</span>
+                    <button
+                      onClick={() => {
+                        const next = !deleteMode
+                        setDeleteMode(next)
+                        if (next) setAnnotationMode(false)
+                      }}
+                      className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-medium transition-all border ${
+                        deleteMode
+                          ? 'bg-red-500/15 border-red-500/40 text-red-400'
+                          : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                      }`}
+                      style={deleteMode ? { boxShadow: '0 0 10px rgba(248,113,113,0.2)' } : undefined}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
+                        <path d="M1 3h10M4 3V2h4v1M5 6v3M7 6v3M2 3l1 7h6l1-7" />
+                      </svg>
+                      {deleteMode ? 'Active' : 'Enable'}
                     </button>
                   </div>
 

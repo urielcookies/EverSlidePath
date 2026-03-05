@@ -38,6 +38,9 @@ export interface PathologyState {
   aiThreshold: number
   aiInferenceTime: number | null
   aiError: string | null
+  syncStatus: 'idle' | 'saving' | 'saved' | 'error'
+  lastSavedAt: number | null
+  deleteMode: boolean
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -65,6 +68,9 @@ export const pathologyStore = new Store<PathologyState>({
   aiThreshold: 0.45,
   aiInferenceTime: null,
   aiError: null,
+  syncStatus: 'idle',
+  lastSavedAt: null,
+  deleteMode: false,
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -144,4 +150,29 @@ export function setAiInferenceTime(v: number | null): void {
 
 export function setAiError(v: string | null): void {
   pathologyStore.setState((prev) => ({ ...prev, aiError: v }))
+}
+
+export function setSyncStatus(v: PathologyState['syncStatus']): void {
+  pathologyStore.setState((prev) => ({ ...prev, syncStatus: v }))
+}
+
+export function setLastSavedAt(v: number | null): void {
+  pathologyStore.setState((prev) => ({ ...prev, lastSavedAt: v }))
+}
+
+export function setDeleteMode(v: boolean): void {
+  pathologyStore.setState((prev) => ({ ...prev, deleteMode: v }))
+}
+
+export function updateAnnotationCoords(id: string, x: number, y: number): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    annotations: prev.annotations.map((a) =>
+      a.id === id ? { ...a, imageCoords: { x, y } } : a
+    ),
+  }))
+}
+
+export function loadAnnotations(anns: Annotation[]): void {
+  pathologyStore.setState((prev) => ({ ...prev, annotations: anns }))
 }

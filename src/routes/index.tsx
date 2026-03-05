@@ -1,17 +1,92 @@
+import { useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { getSlideMetadata, type SlideMetadata } from '../server/slideMetadata'
+import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
 import RightSidebar from '../components/Sidebar/RightSidebar'
 import PathologyViewer from '../components/Viewer/PathologyViewer'
-import { toggleLeftSidebar } from '../store/pathologyStore'
+import {
+  toggleLeftSidebar,
+  usePathologyStore,
+  loadAnnotations,
+  setSyncStatus,
+  setLastSavedAt,
+  pathologyStore,
+} from '../store/pathologyStore'
+
+const SLIDE_ID = 'slide-001'
+const SAVE_DEBOUNCE_MS = 1500
 
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const metadata = getSlideMetadata('slide-001')
-    return { metadata }
+    const metadata = getSlideMetadata(SLIDE_ID)
+    const annotations = await getAnnotationsFn({ data: SLIDE_ID })
+    return { metadata, annotations }
   },
   component: ViewerPage,
 })
+
+// ─── TopBar ───────────────────────────────────────────────────────────────────
+function SyncStatus() {
+  const syncStatus = usePathologyStore((s) => s.syncStatus)
+  const lastSavedAt = usePathologyStore((s) => s.lastSavedAt)
+
+  const timeAgo = lastSavedAt
+    ? (() => {
+        const secs = Math.round((Date.now() - lastSavedAt) / 1000)
+        if (secs < 5) return 'just now'
+        if (secs < 60) return `${secs}s ago`
+        return `${Math.round(secs / 60)}m ago`
+      })()
+    : null
+
+  return (
+    <div className="flex items-center gap-1.5 pl-2 border-l border-slate-700/50">
+      {syncStatus === 'saving' && (
+        <>
+          <svg
+            className="animate-spin"
+            width="12" height="12" viewBox="0 0 12 12"
+            fill="none" stroke="#64748b" strokeWidth="1.5"
+          >
+            <circle cx="6" cy="6" r="4.5" strokeOpacity="0.2" />
+            <path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" />
+          </svg>
+          <span className="text-[10px] text-slate-500 font-mono">Saving…</span>
+        </>
+      )}
+      {syncStatus === 'saved' && (
+        <>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <circle cx="6" cy="6" r="5" fill="rgba(52,211,153,0.15)" stroke="#34d399" strokeWidth="1" />
+            <path d="M4 6l1.5 1.5L8 4.5" stroke="#34d399" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="text-[10px] text-slate-500 font-mono">
+            {timeAgo ?? 'Saved'}
+          </span>
+        </>
+      )}
+      {syncStatus === 'error' && (
+        <>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <circle cx="6" cy="6" r="5" fill="rgba(248,113,113,0.15)" stroke="#f87171" strokeWidth="1" />
+            <path d="M6 4v2.5M6 8h.01" stroke="#f87171" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          <span className="text-[10px] text-red-400 font-mono">Sync error</span>
+        </>
+      )}
+      {syncStatus === 'idle' && (
+        <>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#475569" strokeWidth="1.2">
+            <path d="M2 7.5C2 5.8 3.3 4.5 5 4.5h.5M10 7.5C10 5.8 8.7 4.5 7 4.5h-.5M5.5 4.5V3M6.5 4.5V3M4 7.5h4" />
+          </svg>
+          <span className="text-[10px] text-slate-600 font-mono">Cloud</span>
+        </>
+      )}
+    </div>
+  )
+}
 
 function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
   return (
@@ -40,17 +115,17 @@ function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
         </>
       )}
 
-      {/* Scan chips */}
+      {/* Scan chips + sync status */}
       {metadata && (
         <div className="ml-auto flex items-center gap-2">
           <Chip label={metadata.objectiveLens} />
           <Chip label={`${metadata.micronsPerPixel} µm/px`} />
           <Chip label={metadata.stainProtocol} accent />
-          <ConnectionDot />
+          <SyncStatus />
         </div>
       )}
 
-      {/* Sidebar toggle button */}
+      {/* Sidebar toggle */}
       <button
         onClick={toggleLeftSidebar}
         className="ml-2 flex h-6 w-6 items-center justify-center rounded hover:bg-slate-700/60 transition-colors"
@@ -71,16 +146,8 @@ function Chip({ label, accent = false }: { label: string; accent?: boolean }) {
       className="rounded px-1.5 py-px text-[10px] font-mono font-medium"
       style={
         accent
-          ? {
-              background: 'rgba(34, 211, 238, 0.1)',
-              color: '#22d3ee',
-              border: '1px solid rgba(34, 211, 238, 0.2)',
-            }
-          : {
-              background: 'rgba(30, 41, 59, 0.8)',
-              color: '#94a3b8',
-              border: '1px solid rgba(148, 163, 184, 0.12)',
-            }
+          ? { background: 'rgba(34,211,238,0.1)', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.2)' }
+          : { background: 'rgba(30,41,59,0.8)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.12)' }
       }
     >
       {label}
@@ -88,20 +155,58 @@ function Chip({ label, accent = false }: { label: string; accent?: boolean }) {
   )
 }
 
-function ConnectionDot() {
-  return (
-    <div className="flex items-center gap-1.5 pl-2 border-l border-slate-700/50">
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-      </span>
-      <span className="text-[10px] text-slate-500">Live</span>
-    </div>
-  )
-}
-
+// ─── ViewerPage ───────────────────────────────────────────────────────────────
 function ViewerPage() {
-  const { metadata } = Route.useLoaderData()
+  const { metadata, annotations: loaderAnnotations } = Route.useLoaderData()
+  const annotations = usePathologyStore((s) => s.annotations)
+  const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
+  const aiThreshold = usePathologyStore((s) => s.aiThreshold)
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Prevents the first load-from-DB from triggering an immediate save
+  const hasInitialized = useRef(false)
+
+  // Pre-populate store from DB on mount
+  useEffect(() => {
+    if (loaderAnnotations.length > 0) {
+      loadAnnotations(loaderAnnotations)
+    }
+    // Small delay so the initial loadAnnotations doesn't trip the save effect
+    const t = setTimeout(() => { hasInitialized.current = true }, 100)
+    return () => clearTimeout(t)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced auto-save whenever annotations change
+  useEffect(() => {
+    if (!hasInitialized.current) return
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+
+    setSyncStatus('saving')
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const sessionMeta = aiInferenceTime != null
+          ? { threshold: aiThreshold, inferenceMs: aiInferenceTime }
+          : null
+
+        // Read current annotations directly from store (not stale closure)
+        const current = pathologyStore.state.annotations
+        await saveAnnotationsFn({
+          data: { slideId: SLIDE_ID, annotations: current, sessionMeta },
+        })
+        setSyncStatus('saved')
+        setLastSavedAt(Date.now())
+        toast.success('Saved to cloud', { duration: 2000 })
+      } catch {
+        setSyncStatus('error')
+        toast.error('Sync failed — data saved locally')
+      }
+    }, SAVE_DEBOUNCE_MS)
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    }
+  }, [annotations]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-screen flex-col bg-[#020617] overflow-hidden">
