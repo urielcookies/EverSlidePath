@@ -41,6 +41,8 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const [dragState, setDragState] = useState<DragState | null>(null)
   // True once OSD fires the `open` event (tiles loaded, black box gone)
   const [tilesLoaded, setTilesLoaded] = useState(false)
+  // Live cursor position in image-pixel space — updated on every mouse move
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
 
   const zoomLevel = usePathologyStore((s) => s.zoomLevel)
   const center = usePathologyStore((s) => s.viewportCenter)
@@ -155,6 +157,18 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
 
       // O(1) per frame: single <g> transform keeps all markers pinned to tissue
       viewer.addHandler('update-viewport', syncViewportTransform)
+
+      // Keep transform synced during spring animations (fires every animation frame)
+      viewer.addHandler('animation', syncViewportTransform)
+
+      // Real-time cursor tracking — maps pointer position → image pixel coordinates
+      viewer.addHandler('canvas-mousemove', (event: any) => {
+        const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
+        setCursorPos({ x: Math.round(pt.x), y: Math.round(pt.y) })
+      })
+
+      // Clear cursor readout when pointer leaves the canvas
+      viewer.addHandler('canvas-exit', () => setCursorPos(null))
 
       // Click-to-annotate: preventDefaultAction suppresses OSD zoom-on-click
       viewer.addHandler('canvas-click', (event: any) => {
@@ -485,10 +499,10 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
         )}
       </AnimatePresence>
 
-      {/* Coordinates readout — bottom center */}
+      {/* Coordinates readout — bottom center (cursor pos when hovering, viewport center otherwise) */}
       <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
         <span className="font-mono text-xs bg-slate-900/80 border border-slate-700/50 text-slate-400 px-3 py-1 rounded">
-          X: {pxX.toLocaleString()} | Y: {pxY.toLocaleString()} px
+          X: {(cursorPos?.x ?? pxX).toLocaleString()} | Y: {(cursorPos?.y ?? pxY).toLocaleString()} px
         </span>
       </div>
     </div>
