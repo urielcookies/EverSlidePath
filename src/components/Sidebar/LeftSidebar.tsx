@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   usePathologyStore,
@@ -23,7 +23,6 @@ import {
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
-import { uploadSlideFn } from '../../server/upload'
 import { deleteUploadedSlideFn, addLinkedSlideFn } from '../../server/slideMetadata'
 
 const MOCK_SLIDES = [
@@ -139,68 +138,9 @@ export default function LeftSidebar() {
     protocol: m.stainProtocol,
   }))
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
-  const [uploadError, setUploadError] = useState<string | null>(null)
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
   const [linkStatus, setLinkStatus] = useState<'idle' | 'saving' | 'error'>('idle')
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setUploadStatus('uploading')
-    setUploadError(null)
-
-    try {
-      const arrayBuffer = await file.arrayBuffer()
-      const bytes = new Uint8Array(arrayBuffer)
-      let binary = ''
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i])
-      }
-      const base64 = btoa(binary)
-
-      const slideName = file.name.replace(/\.[^/.]+$/, '')
-      const key = `slides/${Date.now()}-${file.name}`
-      const result = await uploadSlideFn({
-        data: {
-          key,
-          data: base64,
-          contentType: file.type || 'application/octet-stream',
-          name: slideName,
-        },
-      })
-
-      setUploadStatus('done')
-      addUploadedSlide({
-        id: result.key,
-        name: slideName,
-        scanDate: new Date().toISOString().slice(0, 10),
-        objectiveLens: '—',
-        micronsPerPixel: 0,
-        dimensions: { width: 1000, height: 1000 },
-        stainProtocol: 'Uploaded',
-        tissueType: '—',
-        scanner: '—',
-        fileSize: '—',
-        tilesUrl: { type: 'image', url: `/api/r2/${encodeURIComponent(result.key)}` },
-      })
-      setTimeout(() => setUploadStatus('idle'), 2500)
-    } catch (err) {
-      setUploadStatus('error')
-      const msg = err instanceof Error ? err.message : 'Upload failed'
-      setUploadError(msg === 'R2_BINDING_MISSING' ? 'R2 bucket not bound — redeploy required' : msg)
-    } finally {
-      // Reset input so the same file can be re-selected
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
 
   const handleLinkSlide = async () => {
     const url = linkUrl.trim()
@@ -405,63 +345,7 @@ export default function LeftSidebar() {
                   })}
                 </ul>
 
-                {/* Upload button */}
                 <div className="px-3 pb-3 space-y-1.5">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
-                  <button
-                    onClick={handleUploadClick}
-                    disabled={uploadStatus === 'uploading'}
-                    className={`w-full flex items-center justify-center gap-2 rounded px-3 py-1.5 text-[11px] font-medium transition-all border ${
-                      uploadStatus === 'uploading'
-                        ? 'bg-slate-800/60 border-slate-700/40 text-slate-500 cursor-not-allowed'
-                        : uploadStatus === 'done'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
-                        : uploadStatus === 'error'
-                        ? 'bg-red-500/10 border-red-500/40 text-red-400'
-                        : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-slate-200 hover:border-slate-600'
-                    }`}
-                  >
-                    {uploadStatus === 'uploading' ? (
-                      <>
-                        <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#64748b" strokeWidth="1.5">
-                          <circle cx="6" cy="6" r="4.5" strokeOpacity="0.25" />
-                          <path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" />
-                        </svg>
-                        Uploading…
-                      </>
-                    ) : uploadStatus === 'done' ? (
-                      <>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                          <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        Uploaded
-                      </>
-                    ) : (
-                      <>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                          <path d="M6 8V2M3 5l3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
-                          <path d="M1 10h10" strokeLinecap="round" />
-                        </svg>
-                        {uploadStatus === 'error' ? 'Retry Upload' : 'Upload Slide'}
-                      </>
-                    )}
-                  </button>
-                  {uploadStatus === 'error' && uploadError && (
-                    <p className="text-[10px] text-red-400 leading-snug">{uploadError}</p>
-                  )}
-
-                  {/* Divider */}
-                  <div className="flex items-center gap-2 py-0.5">
-                    <div className="flex-1 h-px bg-slate-800" />
-                    <span className="text-[9px] text-slate-600 font-mono uppercase tracking-wider">or link by URL</span>
-                    <div className="flex-1 h-px bg-slate-800" />
-                  </div>
-
                   {/* URL link inputs */}
                   <input
                     type="text"
