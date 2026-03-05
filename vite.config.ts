@@ -11,12 +11,19 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 const config = defineConfig({
   plugins: [
     devtools(),
-    cloudflare({ viteEnvironment: { name: 'ssr' } }),
     tsconfigPaths({ projects: ['./tsconfig.json'] }),
     tailwindcss(),
     tanstackStart(),
+    cloudflare({ viteEnvironment: { name: 'ssr' } }),
     viteReact(),
   ],
+  build: {
+    rollupOptions: {
+      // cloudflare:env is a Cloudflare Workers runtime virtual module —
+      // leave it unresolved at build time; Workerd resolves it at runtime.
+      external: ['cloudflare:env'],
+    },
+  },
 })
 
 export default config

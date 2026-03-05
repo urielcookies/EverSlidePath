@@ -5,6 +5,5 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "pathshare-db"
-# Replace with real ID after: wrangler d1 create pathshare-db
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "cc96adee-f03a-49a3-a6bc-c39171cb9ad3"
 migrations_dir = "migrations"

@@ -1,7 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tanstack-start-app",
+  "name": "pathshare",
   "compatibility_date": "2025-09-02",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry"
+  "main": "@tanstack/react-start/server-entry",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pathshare-db",
+      "database_id": "cc96adee-f03a-49a3-a6bc-c39171cb9ad3",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
