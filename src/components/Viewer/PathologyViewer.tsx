@@ -23,7 +23,11 @@ interface DragState {
   imgY: number
 }
 
-export default function PathologyViewer() {
+interface PathologyViewerProps {
+  tilesUrl: string
+}
+
+export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<any>(null)
   const annotationModeRef = useRef(false)
@@ -33,6 +37,8 @@ export default function PathologyViewer() {
   const [svgTransform, setSvgTransform] = useState({ tx: 0, ty: 0, scale: 0 })
   // Drag state — tracks the annotation being moved and its live image coords
   const [dragState, setDragState] = useState<DragState | null>(null)
+  // True once OSD fires the `open` event (tiles loaded, black box gone)
+  const [tilesLoaded, setTilesLoaded] = useState(false)
 
   const zoomLevel = usePathologyStore((s) => s.zoomLevel)
   const center = usePathologyStore((s) => s.viewportCenter)
@@ -95,7 +101,7 @@ export default function PathologyViewer() {
 
       const viewer = OSD({
         element: containerRef.current,
-        tileSources: 'https://openseadragon.github.io/example-images/highsmith/highsmith.dzi',
+        tileSources: tilesUrl,
         showNavigator: true,
         navigatorPosition: 'BOTTOM_RIGHT',
         navigatorSizeRatio: 0.15,
@@ -109,12 +115,19 @@ export default function PathologyViewer() {
         springStiffness: 6.5,
         zoomPerClick: 1.4,
         gestureSettingsMouse: { flickEnabled: true, flickMinSpeed: 20, flickMomentum: 0.4 },
+        crossOriginPolicy: 'Anonymous',
+        loadTilesWithAjax: true,
         // @ts-expect-error — backgroundColor is valid OSD option, missing from @types/openseadragon
         backgroundColor: '#020617',
       })
 
       viewerRef.current = viewer
       setViewerInstance(viewer)
+
+      // Tiles loaded — remove the black placeholder overlay
+      viewer.addHandler('open', () => {
+        setTilesLoaded(true)
+      })
 
       viewer.addHandler('zoom', ({ zoom }: { zoom: number }) => {
         setZoomLevel(Math.round(zoom * 10) / 10)
@@ -235,6 +248,34 @@ export default function PathologyViewer() {
           cursor: deleteMode ? 'not-allowed' : annotationMode ? 'crosshair' : undefined,
         }}
       />
+
+      {/* Loading overlay — fades out once OSD fires `open` (tiles fetched) */}
+      <AnimatePresence>
+        {!tilesLoaded && (
+          <motion.div
+            key="tiles-loading"
+            className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#020617] pointer-events-none"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          >
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" className="mb-3">
+              <circle cx="20" cy="20" r="16" stroke="rgba(34,211,238,0.12)" strokeWidth="2.5" />
+              <motion.circle
+                cx="20" cy="20" r="16"
+                stroke="#22d3ee" strokeWidth="2.5" strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 16 * 0.25} ${2 * Math.PI * 16 * 0.75}`}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, ease: 'linear', repeat: Infinity }}
+                style={{ transformOrigin: '20px 20px' }}
+              />
+            </svg>
+            <span className="font-mono text-[11px] text-slate-500 tracking-widest uppercase">
+              Loading tiles…
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* SVG annotation overlay — hidden until first update-viewport fires */}
       {svgTransform.scale > 0 && (

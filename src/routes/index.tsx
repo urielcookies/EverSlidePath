@@ -213,7 +213,7 @@ function ViewerPage() {
       <TopBar metadata={metadata} />
       <div className="flex flex-1 overflow-hidden">
         <LeftSidebar />
-        <PathologyViewer />
+        <PathologyViewer tilesUrl={metadata.tilesUrl} />
         <RightSidebar metadata={metadata} />
       </div>
     </div>

@@ -11,6 +11,7 @@ export interface SlideMetadata {
   tissueType: string
   scanner: string
   fileSize: string
+  tilesUrl: string
 }
 
 const MOCK_SLIDES: Record<string, SlideMetadata> = {
@@ -25,6 +26,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Breast Carcinoma',
     scanner: 'Aperio GT 450',
     fileSize: '4.2 GB',
+    tilesUrl: 'https://openseadragon.github.io/example-images/duo/duo.dzi',
   },
   'slide-002': {
     id: 'slide-002',
@@ -37,6 +39,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Lung Adenocarcinoma',
     scanner: 'Leica Aperio CS2',
     fileSize: '2.8 GB',
+    tilesUrl: 'https://openseadragon.github.io/example-images/highsmith/highsmith.dzi',
   },
   'slide-003': {
     id: 'slide-003',
@@ -49,6 +52,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Colorectal Adenocarcinoma',
     scanner: 'Hamamatsu NanoZoomer S360',
     fileSize: '5.7 GB',
+    tilesUrl: 'https://openseadragon.github.io/example-images/duo/duo.dzi',
   },
 }
 
