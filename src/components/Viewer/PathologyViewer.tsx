@@ -124,9 +124,20 @@ export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
       viewerRef.current = viewer
       setViewerInstance(viewer)
 
-      // Tiles loaded — remove the black placeholder overlay
+      // Shared helper — keeps markers pinned to tissue coords (O(1) per call)
+      const syncViewportTransform = () => {
+        const origin = viewer.viewport.imageToViewerElementCoordinates(new OSD.Point(0, 0))
+        const scalePoint = viewer.viewport.imageToViewerElementCoordinates(new OSD.Point(1, 0))
+        const s = scalePoint.x - origin.x
+        setSvgTransform({ tx: origin.x, ty: origin.y, scale: s > 0 ? s : 1 })
+      }
+
+      // `open` fires once the tile source is parsed — force-init coords immediately
+      // so Annotation Mode works before any pan/zoom event fires.
       viewer.addHandler('open', () => {
+        console.log('OSD Viewer Initialized')
         setTilesLoaded(true)
+        syncViewportTransform()
       })
 
       viewer.addHandler('zoom', ({ zoom }: { zoom: number }) => {
@@ -141,12 +152,7 @@ export default function PathologyViewer({ tilesUrl }: PathologyViewerProps) {
       })
 
       // O(1) per frame: single <g> transform keeps all markers pinned to tissue
-      viewer.addHandler('update-viewport', () => {
-        const origin = viewer.viewport.imageToViewerElementCoordinates(new OSD.Point(0, 0))
-        const scalePoint = viewer.viewport.imageToViewerElementCoordinates(new OSD.Point(1, 0))
-        const s = scalePoint.x - origin.x
-        setSvgTransform({ tx: origin.x, ty: origin.y, scale: s > 0 ? s : 1 })
-      })
+      viewer.addHandler('update-viewport', syncViewportTransform)
 
       // Click-to-annotate: preventDefaultAction suppresses OSD zoom-on-click
       viewer.addHandler('canvas-click', (event: any) => {

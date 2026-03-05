@@ -26,7 +26,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Breast Carcinoma',
     scanner: 'Aperio GT 450',
     fileSize: '4.2 GB',
-    tilesUrl: 'https://openseadragon.github.io/example-images/duo/duo.dzi',
+    tilesUrl: 'https://lib-test.library.ucla.edu/iiif/2/test%2Fbiopsy.jp2/info.json',
   },
   'slide-002': {
     id: 'slide-002',
@@ -39,7 +39,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Lung Adenocarcinoma',
     scanner: 'Leica Aperio CS2',
     fileSize: '2.8 GB',
-    tilesUrl: 'https://openseadragon.github.io/example-images/highsmith/highsmith.dzi',
+    tilesUrl: 'https://lib-test.library.ucla.edu/iiif/2/test%2Fbiopsy.jp2/info.json',
   },
   'slide-003': {
     id: 'slide-003',
@@ -52,7 +52,7 @@ const MOCK_SLIDES: Record<string, SlideMetadata> = {
     tissueType: 'Colorectal Adenocarcinoma',
     scanner: 'Hamamatsu NanoZoomer S360',
     fileSize: '5.7 GB',
-    tilesUrl: 'https://openseadragon.github.io/example-images/duo/duo.dzi',
+    tilesUrl: 'https://lib-test.library.ucla.edu/iiif/2/test%2Fbiopsy.jp2/info.json',
   },
 }
 
