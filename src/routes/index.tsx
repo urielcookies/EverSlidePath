@@ -1,239 +1,347 @@
-import { useEffect, useRef } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { toast } from 'sonner'
-import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata'
-import type { SlideMetadata } from '../server/slideMetadata'
-import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
-import LeftSidebar from '../components/Sidebar/LeftSidebar'
-import RightSidebar from '../components/Sidebar/RightSidebar'
-import PathologyViewer from '../components/Viewer/PathologyViewer'
-import {
-  toggleLeftSidebar,
-  usePathologyStore,
-  loadAnnotations,
-  setSyncStatus,
-  setLastSavedAt,
-  setUploadedSlides,
-  pathologyStore,
-} from '../store/pathologyStore'
-
-const SAVE_DEBOUNCE_MS = 1500
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
-  loader: async () => ({}),
-  component: ViewerPage,
+  component: LandingPage,
 })
 
-// ─── TopBar ───────────────────────────────────────────────────────────────────
-function SyncStatus() {
-  const syncStatus = usePathologyStore((s) => s.syncStatus)
-  const lastSavedAt = usePathologyStore((s) => s.lastSavedAt)
-
-  const timeAgo = lastSavedAt
-    ? (() => {
-        const secs = Math.round((Date.now() - lastSavedAt) / 1000)
-        if (secs < 5) return 'just now'
-        if (secs < 60) return `${secs}s ago`
-        return `${Math.round(secs / 60)}m ago`
-      })()
-    : null
-
+function LandingPage() {
   return (
-    <div className="flex items-center gap-1.5 pl-2 border-l border-slate-700/50">
-      {syncStatus === 'saving' && (
-        <>
-          <svg
-            className="animate-spin"
-            width="12" height="12" viewBox="0 0 12 12"
-            fill="none" stroke="#64748b" strokeWidth="1.5"
+    <div className="min-h-screen bg-[#020617] text-slate-200">
+      {/* Nav */}
+      <nav
+        className="fixed top-0 left-0 right-0 z-50 flex h-14 items-center justify-between px-6 border-b border-slate-800/60"
+        style={{ background: 'rgba(2,6,23,0.92)', backdropFilter: 'blur(12px)' }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-500/20 border border-cyan-500/40">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="4.5" stroke="#22d3ee" strokeWidth="1.4" />
+              <circle cx="7" cy="7" r="1.5" fill="#22d3ee" />
+              <circle cx="7" cy="2.5" r="0.8" fill="#22d3ee" opacity="0.5" />
+              <circle cx="7" cy="11.5" r="0.8" fill="#22d3ee" opacity="0.5" />
+              <circle cx="2.5" cy="7" r="0.8" fill="#22d3ee" opacity="0.5" />
+              <circle cx="11.5" cy="7" r="0.8" fill="#22d3ee" opacity="0.5" />
+            </svg>
+          </div>
+          <span className="text-sm font-semibold tracking-wide text-slate-100">EverSlidePath</span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <Link
+            to="/about"
+            className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
           >
-            <circle cx="6" cy="6" r="4.5" strokeOpacity="0.2" />
-            <path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" />
+            About
+          </Link>
+          <Link
+            to="/viewer"
+            className="flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium text-[#020617] transition-all hover:brightness-110"
+            style={{ background: '#22d3ee' }}
+          >
+            Open Viewer
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2.5 6h7M6.5 3l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section
+        className="relative flex min-h-screen flex-col items-center justify-center px-6 pt-14 text-center"
+        style={{
+          background: 'radial-gradient(ellipse 80% 60% at 50% 40%, rgba(34,211,238,0.07) 0%, transparent 70%), #020617',
+        }}
+      >
+        {/* Badge */}
+        <div
+          className="mb-6 inline-flex items-center gap-2 rounded-full px-3.5 py-1 text-[10px] font-semibold tracking-widest uppercase"
+          style={{ background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.25)', color: '#22d3ee' }}
+        >
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full animate-pulse"
+            style={{ background: '#22d3ee' }}
+          />
+          Educational Pathology Platform
+        </div>
+
+        <h1 className="mx-auto mb-5 max-w-3xl text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
+          Learn Pathology{' '}
+          <span style={{ color: '#22d3ee' }}>Through Real Cases</span>
+        </h1>
+
+        <p className="mx-auto mb-10 max-w-2xl text-base leading-relaxed text-slate-400 sm:text-lg">
+          Interactive whole-slide imaging, AI-assisted detection, and
+          expert-annotated cases — purpose-built for medical students and
+          residents.
+        </p>
+
+        <div className="flex flex-col items-center gap-3">
+          <Link
+            to="/viewer"
+            className="inline-flex items-center gap-2 rounded-lg px-7 py-3.5 text-base font-semibold text-[#020617] transition-all hover:brightness-110 active:scale-[0.98]"
+            style={{ background: '#22d3ee', boxShadow: '0 0 28px rgba(34,211,238,0.25)' }}
+          >
+            Open the Viewer →
+          </Link>
+          <span className="text-xs text-slate-600">No signup required</span>
+        </div>
+
+        {/* Scroll cue */}
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 opacity-40">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+            <path d="M3 6l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="text-[10px] text-slate-500 font-mono">Saving…</span>
-        </>
-      )}
-      {syncStatus === 'saved' && (
-        <>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle cx="6" cy="6" r="5" fill="rgba(52,211,153,0.15)" stroke="#34d399" strokeWidth="1" />
-            <path d="M4 6l1.5 1.5L8 4.5" stroke="#34d399" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="text-[10px] text-slate-500 font-mono">
-            {timeAgo ?? 'Saved'}
-          </span>
-        </>
-      )}
-      {syncStatus === 'error' && (
-        <>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle cx="6" cy="6" r="5" fill="rgba(248,113,113,0.15)" stroke="#f87171" strokeWidth="1" />
-            <path d="M6 4v2.5M6 8h.01" stroke="#f87171" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          <span className="text-[10px] text-red-400 font-mono">Sync error</span>
-        </>
-      )}
-      {syncStatus === 'idle' && (
-        <>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#475569" strokeWidth="1.2">
-            <path d="M2 7.5C2 5.8 3.3 4.5 5 4.5h.5M10 7.5C10 5.8 8.7 4.5 7 4.5h-.5M5.5 4.5V3M6.5 4.5V3M4 7.5h4" />
-          </svg>
-          <span className="text-[10px] text-slate-600 font-mono">Cloud</span>
-        </>
-      )}
+        </div>
+      </section>
+
+      {/* Feature Strip */}
+      <section className="px-6 py-24">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-cyan-400">
+            Platform Features
+          </h2>
+          <p className="mb-12 text-center text-2xl font-bold text-white">
+            Everything you need to study pathology
+          </p>
+
+          <div className="grid gap-5 sm:grid-cols-3">
+            <FeatureCard
+              icon={
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <rect x="2" y="2" width="16" height="16" rx="2" stroke="#22d3ee" strokeWidth="1.4" />
+                  <circle cx="10" cy="10" r="4" stroke="#22d3ee" strokeWidth="1.4" />
+                  <circle cx="10" cy="10" r="1.5" fill="#22d3ee" />
+                  <path d="M10 2v2M10 16v2M2 10h2M16 10h2" stroke="#22d3ee" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              }
+              title="Interactive Viewer"
+              description="Pan and zoom whole-slide images with hardware-accelerated rendering. Multi-channel controls for fluorescence slides."
+            />
+            <FeatureCard
+              icon={
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="10" r="7.5" stroke="#22d3ee" strokeWidth="1.4" />
+                  <circle cx="7" cy="8" r="1.2" fill="#22d3ee" />
+                  <circle cx="13" cy="8" r="1.2" fill="#22d3ee" />
+                  <circle cx="10" cy="12.5" r="1.2" fill="#22d3ee" />
+                  <path d="M7 8l3 4.5L13 8" stroke="#22d3ee" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+                </svg>
+              }
+              title="AI Nuclear Detection"
+              description="TensorFlow.js StarDist model runs entirely in your browser — no server round-trips, instant inference on any tissue region."
+            />
+            <FeatureCard
+              icon={
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 5h14M3 10h10M3 15h7" stroke="#22d3ee" strokeWidth="1.4" strokeLinecap="round" />
+                  <circle cx="16" cy="14" r="3" stroke="#22d3ee" strokeWidth="1.2" />
+                  <path d="M15 14h2M16 13v2" stroke="#22d3ee" strokeWidth="1" strokeLinecap="round" />
+                </svg>
+              }
+              title="Annotate & Learn"
+              description="Draw shapes, label tissue regions — tumor, stroma, vessels, immune cells — and sync annotations to the cloud automatically."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section
+        className="px-6 py-24"
+        style={{ background: 'rgba(15,23,42,0.6)' }}
+      >
+        <div className="mx-auto max-w-4xl">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-cyan-400">
+            How It Works
+          </h2>
+          <p className="mb-14 text-center text-2xl font-bold text-white">
+            Three steps to deeper understanding
+          </p>
+
+          <div className="relative grid gap-10 sm:grid-cols-3">
+            {/* Connector line */}
+            <div
+              className="absolute top-6 left-[16.67%] right-[16.67%] hidden h-px sm:block"
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.3), transparent)' }}
+            />
+
+            <Step
+              number="01"
+              title="Open a Case"
+              description="Browse the Study Browser and select a whole-slide image case to examine."
+            />
+            <Step
+              number="02"
+              title="Annotate Your Findings"
+              description="Label tumor, stroma, vessels, and immune cells with the built-in annotation tools."
+            />
+            <Step
+              number="03"
+              title="Run AI Analysis"
+              description="Trigger StarDist nuclear detection and compare your annotations with automated results."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Who It's For */}
+      <section className="px-6 py-24">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-cyan-400">
+            Who It's For
+          </h2>
+          <p className="mb-12 text-center text-2xl font-bold text-white">
+            Built for pathology learners at every stage
+          </p>
+
+          <div className="grid gap-5 sm:grid-cols-3">
+            <PersonaCard
+              emoji="🔬"
+              role="Medical Students"
+              description="Build diagnostic pattern recognition on real H&E and IHC cases before your pathology rotation."
+            />
+            <PersonaCard
+              emoji="🏥"
+              role="Pathology Residents"
+              description="Practice systematic slide review and AI-assisted workflows before stepping up to the microscope."
+            />
+            <PersonaCard
+              emoji="📚"
+              role="Educators"
+              description="Share expertly annotated cases with students and track their annotation progress in real time."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Footer CTA */}
+      <section
+        className="px-6 py-28 text-center"
+        style={{
+          background: 'radial-gradient(ellipse 70% 80% at 50% 100%, rgba(34,211,238,0.06) 0%, transparent 70%), rgba(15,23,42,0.5)',
+        }}
+      >
+        <h2 className="mb-4 text-3xl font-bold text-white sm:text-4xl">
+          Ready to explore pathology?
+        </h2>
+        <p className="mb-8 text-slate-400">
+          Jump straight in — no account, no setup.
+        </p>
+        <Link
+          to="/viewer"
+          className="inline-flex items-center gap-2 rounded-lg px-8 py-4 text-base font-semibold text-[#020617] transition-all hover:brightness-110 active:scale-[0.98]"
+          style={{ background: '#22d3ee', boxShadow: '0 0 36px rgba(34,211,238,0.2)' }}
+        >
+          Start Learning Now →
+        </Link>
+        <p className="mt-5 text-xs text-slate-600">
+          Built on OpenSeadragon + TensorFlow.js
+        </p>
+      </section>
+
+      {/* Page Footer */}
+      <footer className="border-t border-slate-800/60 px-6 py-8">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
+          <div className="flex items-center gap-2">
+            <div className="flex h-5 w-5 items-center justify-center rounded bg-cyan-500/20 border border-cyan-500/40">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <circle cx="5" cy="5" r="3" stroke="#22d3ee" strokeWidth="1.2" />
+                <circle cx="5" cy="5" r="1" fill="#22d3ee" />
+              </svg>
+            </div>
+            <span className="text-xs font-semibold text-slate-400">EverSlidePath</span>
+          </div>
+          <p className="text-xs text-slate-600">
+            © {new Date().getFullYear()} EverSlidePath. All rights reserved.
+          </p>
+          <Link to="/about" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            About
+          </Link>
+        </div>
+      </footer>
     </div>
   )
 }
 
-function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function FeatureCard({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+}) {
   return (
-    <header
-      className="flex h-9 flex-shrink-0 items-center gap-3 border-b border-slate-800/60 px-4"
-      style={{ background: 'rgba(15, 23, 42, 0.98)' }}
+    <div
+      className="rounded-xl p-6 transition-colors hover:border-cyan-500/30"
+      style={{
+        background: 'rgba(15,23,42,0.8)',
+        border: '1px solid rgba(148,163,184,0.1)',
+      }}
     >
-      {/* Logo + wordmark */}
-      <div className="flex items-center gap-2 pr-4 border-r border-slate-700/50">
-        <div className="flex h-5 w-5 items-center justify-center rounded bg-cyan-500/20 border border-cyan-500/40">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <circle cx="5" cy="5" r="3" stroke="#22d3ee" strokeWidth="1.2" />
-            <circle cx="5" cy="5" r="1" fill="#22d3ee" />
-          </svg>
-        </div>
-        <span className="text-xs font-semibold tracking-wide text-slate-200">PathShare</span>
-      </div>
-
-      {/* Breadcrumb */}
-      {metadata && (
-        <>
-          <span className="text-xs text-slate-500">/</span>
-          <span className="text-xs font-medium text-slate-300 font-mono">{metadata.name}</span>
-          <span className="text-xs text-slate-500">/</span>
-          <span className="text-xs text-slate-500">{metadata.tissueType}</span>
-        </>
-      )}
-
-      {/* Scan chips + sync status */}
-      {metadata && (
-        <div className="ml-auto flex items-center gap-2">
-          <Chip label={metadata.objectiveLens} />
-          <Chip label={`${metadata.micronsPerPixel} µm/px`} />
-          <Chip label={metadata.stainProtocol} accent />
-          <SyncStatus />
-        </div>
-      )}
-
-      {/* Sidebar toggle */}
-      <button
-        onClick={toggleLeftSidebar}
-        className="ml-2 flex h-6 w-6 items-center justify-center rounded hover:bg-slate-700/60 transition-colors"
-        title="Toggle left sidebar"
+      <div
+        className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg"
+        style={{ background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.2)' }}
       >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#64748b" strokeWidth="1.5">
-          <rect x="1" y="2" width="12" height="10" rx="1.5" />
-          <line x1="5" y1="2" x2="5" y2="12" />
-        </svg>
-      </button>
-    </header>
-  )
-}
-
-function Chip({ label, accent = false }: { label: string; accent?: boolean }) {
-  return (
-    <span
-      className="rounded px-1.5 py-px text-[10px] font-mono font-medium"
-      style={
-        accent
-          ? { background: 'rgba(34,211,238,0.1)', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.2)' }
-          : { background: 'rgba(30,41,59,0.8)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.12)' }
-      }
-    >
-      {label}
-    </span>
-  )
-}
-
-// ─── ViewerPage ───────────────────────────────────────────────────────────────
-function ViewerPage() {
-  const activeSlideId = usePathologyStore((s) => s.activeSlideId)
-  const uploadedSlideMetadata = usePathologyStore((s) => s.uploadedSlideMetadata)
-  const metadata: SlideMetadata = uploadedSlideMetadata[activeSlideId] ?? getSlideMetadata(activeSlideId)
-  const annotations = usePathologyStore((s) => s.annotations)
-  const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
-  const aiThreshold = usePathologyStore((s) => s.aiThreshold)
-
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // true while loading a slide's annotations — prevents spurious auto-saves
-  const slideLoadingRef = useRef(true)
-
-  // Fetch persisted slides from D1 on mount
-  useEffect(() => {
-    fetchUploadedSlidesFn().then(setUploadedSlides).catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Load annotations whenever the active slide changes
-  useEffect(() => {
-    slideLoadingRef.current = true
-    let cancelled = false
-
-    getAnnotationsFn({ data: activeSlideId })
-      .then((anns) => {
-        if (!cancelled) {
-          loadAnnotations(anns)
-          setSyncStatus('idle')
-          // Small delay so the loadAnnotations state update settles before saves can fire
-          setTimeout(() => { if (!cancelled) slideLoadingRef.current = false }, 150)
-        }
-      })
-      .catch(() => { if (!cancelled) slideLoadingRef.current = false })
-
-    return () => { cancelled = true }
-  }, [activeSlideId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Debounced auto-save whenever annotations change
-  useEffect(() => {
-    if (slideLoadingRef.current) return
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-
-    setSyncStatus('saving')
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        const sessionMeta = aiInferenceTime != null
-          ? { threshold: aiThreshold, inferenceMs: aiInferenceTime }
-          : null
-
-        // Read fresh values from store (avoid stale closures)
-        const current = pathologyStore.state.annotations
-        const slideId = pathologyStore.state.activeSlideId
-        await saveAnnotationsFn({
-          data: { slideId, annotations: current, sessionMeta },
-        })
-        setSyncStatus('saved')
-        setLastSavedAt(Date.now())
-        toast.success('Saved to cloud', { duration: 2000 })
-      } catch {
-        setSyncStatus('error')
-        toast.error('Sync failed — data saved locally')
-      }
-    }, SAVE_DEBOUNCE_MS)
-
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    }
-  }, [annotations]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="flex h-screen flex-col bg-[#020617] overflow-hidden">
-      <TopBar metadata={metadata} />
-      <div className="flex flex-1 overflow-hidden">
-        <LeftSidebar />
-        <PathologyViewer
-          tilesUrl={metadata.tilesUrl}
-          imageWidth={metadata.dimensions.width}
-          imageHeight={metadata.dimensions.height}
-        />
-        <RightSidebar metadata={metadata} />
+        {icon}
       </div>
+      <h3 className="mb-2 text-sm font-semibold text-slate-100">{title}</h3>
+      <p className="text-sm leading-relaxed text-slate-500">{description}</p>
+    </div>
+  )
+}
+
+function Step({
+  number,
+  title,
+  description,
+}: {
+  number: string
+  title: string
+  description: string
+}) {
+  return (
+    <div className="relative flex flex-col items-center text-center">
+      <div
+        className="mb-4 flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold"
+        style={{
+          background: 'rgba(34,211,238,0.1)',
+          border: '1px solid rgba(34,211,238,0.3)',
+          color: '#22d3ee',
+        }}
+      >
+        {number}
+      </div>
+      <h3 className="mb-2 text-sm font-semibold text-slate-100">{title}</h3>
+      <p className="text-sm leading-relaxed text-slate-500">{description}</p>
+    </div>
+  )
+}
+
+function PersonaCard({
+  emoji,
+  role,
+  description,
+}: {
+  emoji: string
+  role: string
+  description: string
+}) {
+  return (
+    <div
+      className="rounded-xl p-6"
+      style={{
+        background: 'rgba(15,23,42,0.8)',
+        border: '1px solid rgba(148,163,184,0.1)',
+      }}
+    >
+      <div className="mb-3 text-2xl">{emoji}</div>
+      <h3 className="mb-2 text-sm font-semibold text-slate-100">{role}</h3>
+      <p className="text-sm leading-relaxed text-slate-500">{description}</p>
     </div>
   )
 }

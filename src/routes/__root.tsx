@@ -23,7 +23,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body className="h-screen overflow-hidden bg-[#020617] text-slate-100 font-sans antialiased">
+      <body className="bg-[#020617] text-slate-100 font-sans antialiased">
         {children}
         <Toaster
           theme="dark"
