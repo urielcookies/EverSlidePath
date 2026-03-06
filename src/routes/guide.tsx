@@ -65,35 +65,26 @@ function GuidePage() {
       <div className="mx-auto max-w-6xl px-6 pb-16 space-y-0 divide-y divide-slate-800/60">
 
         {/* Section 1: Overview */}
-        <SideSection
-          label="01"
-          title="Viewer Overview"
-          screenshot="/guide/guide-04-study-browser.png"
-          screenshotAlt="Slide metadata and analysis panel"
-          cropTall
-        >
-          <p className="text-slate-400 leading-relaxed mb-4">
-            The viewer is divided into four main zones:
-          </p>
-          <ul className="space-y-3 text-slate-400">
-            <li className="flex gap-3">
-              <Bullet />
-              <span><strong className="text-slate-300">TopBar</strong> — slide metadata (stain, objective, resolution), sync status, share link, and navigation</span>
-            </li>
-            <li className="flex gap-3">
-              <Bullet />
-              <span><strong className="text-slate-300">Left Sidebar</strong> — Study Browser for loading slides, annotation tools, and AI analysis controls</span>
-            </li>
-            <li className="flex gap-3">
-              <Bullet />
-              <span><strong className="text-slate-300">WSI Canvas</strong> — the main whole-slide image viewport with pan, zoom, and overlay rendering</span>
-            </li>
-            <li className="flex gap-3">
-              <Bullet />
-              <span><strong className="text-slate-300">Right Sidebar</strong> — Analysis, Report, and Case tabs for quantitative data and exports</span>
-            </li>
+        <section className="py-10">
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="text-[10px] font-mono text-slate-600 tracking-widest">01</span>
+            <h2 className="text-xl font-semibold text-slate-100">Viewer Overview</h2>
+          </div>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-3 text-slate-400 mb-6">
+            <li className="flex gap-3"><Bullet /><span><strong className="text-slate-300">TopBar</strong> — slide metadata (stain, objective, resolution), sync status, share link, and navigation</span></li>
+            <li className="flex gap-3"><Bullet /><span><strong className="text-slate-300">Left Sidebar</strong> — Study Browser for loading slides, annotation tools, and AI analysis controls</span></li>
+            <li className="flex gap-3"><Bullet /><span><strong className="text-slate-300">WSI Canvas</strong> — the main whole-slide image viewport with pan, zoom, and overlay rendering</span></li>
+            <li className="flex gap-3"><Bullet /><span><strong className="text-slate-300">Right Sidebar</strong> — Analysis, Report, and Case tabs for quantitative data and exports</span></li>
           </ul>
-        </SideSection>
+          <figure className="overflow-hidden rounded-xl border border-slate-800/60">
+            <img
+              src="/guide/guide-06-analysis-panel.jpeg"
+              alt="Full viewer showing all four UI zones: TopBar, Left Sidebar, WSI Canvas, Right Sidebar"
+              className="w-full h-auto block"
+              loading="lazy"
+            />
+          </figure>
+        </section>
 
         {/* Section 2: Loading Slides */}
         <SideSection
@@ -102,7 +93,6 @@ function GuidePage() {
           screenshot="/guide/guide-01-overview.png"
           screenshotAlt="Study Browser panel showing slide list and URL input"
           flip
-          cropTall
         >
           <p className="text-slate-400 leading-relaxed mb-4">
             The Study Browser in the left sidebar gives you three ways to open a slide:
@@ -133,32 +123,32 @@ function GuidePage() {
         </SideSection>
 
         {/* Section 4: AI Analysis */}
-        <SideSection
-          label="04"
-          title="AI Analysis"
-          screenshot="/guide/guide-05-left-panel.png"
-          screenshotAlt="Left panel showing AI analysis controls and threshold slider"
-          flip
-        >
-          <p className="text-slate-400 leading-relaxed mb-4">
-            The <Mono>Run AI Analysis</Mono> button (left panel, below annotation tools) sends the current
-            viewport region to the detection model. Once complete, probability heatmaps overlay the canvas.
-          </p>
-          <p className="text-slate-400 leading-relaxed mb-5">
-            Use the <strong className="text-slate-300">probability threshold slider</strong> to filter
-            detections by confidence — drag right to show only high-confidence regions. The model detects
-            mitotic figures, tumor cell clusters, and stromal boundaries depending on the stain protocol.
-          </p>
-          <div
-            className="rounded-lg border border-slate-800/60 px-4 py-3"
-            style={{ background: 'rgba(34,211,238,0.04)' }}
-          >
-            <p className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest mb-1">Tip</p>
-            <p className="text-xs text-slate-400">
-              AI analysis runs on the current viewport region only. Pan to a new area and run again to analyse the full slide progressively.
-            </p>
+        <section className="py-10">
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="text-[10px] font-mono text-slate-600 tracking-widest">04</span>
+            <h2 className="text-xl font-semibold text-slate-100">AI Analysis</h2>
           </div>
-        </SideSection>
+          <div className="max-w-2xl space-y-4">
+            <p className="text-slate-400 leading-relaxed">
+              The <Mono>Run AI Analysis</Mono> button (left panel, below annotation tools) sends the current
+              viewport region to the detection model. Once complete, probability heatmaps overlay the canvas.
+            </p>
+            <p className="text-slate-400 leading-relaxed">
+              Use the <strong className="text-slate-300">probability threshold slider</strong> to filter
+              detections by confidence — drag right to show only high-confidence regions. The model detects
+              mitotic figures, tumor cell clusters, and stromal boundaries depending on the stain protocol.
+            </p>
+            <div
+              className="rounded-lg border border-slate-800/60 px-4 py-3"
+              style={{ background: 'rgba(34,211,238,0.04)' }}
+            >
+              <p className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest mb-1">Tip</p>
+              <p className="text-xs text-slate-400">
+                AI analysis runs on the current viewport region only. Pan to a new area and run again to analyse the full slide progressively.
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* Section 5: Channel Mixer */}
         <SideSection
@@ -180,25 +170,35 @@ function GuidePage() {
         </SideSection>
 
         {/* Section 6: Analysis & Report Panels */}
-        <SideSection
-          label="06"
-          title="Analysis & Report Panels"
-          screenshot="/guide/guide-06-analysis-panel.jpeg"
-          screenshotAlt="Analysis and Report panels in the right sidebar"
-          flip
-        >
-          <p className="text-slate-400 leading-relaxed mb-4">
-            The right sidebar contains two tabs:
-          </p>
-          <ul className="space-y-3 text-slate-400 mb-5">
-            <li className="flex gap-3"><Bullet /><span>
-              <strong className="text-slate-300">Analysis tab</strong> — slide metadata (scanner, resolution, stain), quantitative breakdown of annotated regions, recent annotation list, and per-region statistics
-            </span></li>
-            <li className="flex gap-3"><Bullet /><span>
-              <strong className="text-slate-300">Report tab</strong> — session summary, <Mono>Export CSV</Mono> for annotation data, and <Mono>Export JSON</Mono> for full metadata including slide parameters
-            </span></li>
-          </ul>
-        </SideSection>
+        <section className="py-10">
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="text-[10px] font-mono text-slate-600 tracking-widest">06</span>
+            <h2 className="text-xl font-semibold text-slate-100">Analysis & Report Panels</h2>
+          </div>
+          <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-start">
+            <div className="flex-1 min-w-0">
+              <p className="text-slate-400 leading-relaxed mb-4">The right sidebar contains two tabs:</p>
+              <ul className="space-y-3 text-slate-400">
+                <li className="flex gap-3"><Bullet /><span>
+                  <strong className="text-slate-300">Analysis tab</strong> — slide metadata (scanner, resolution, stain), quantitative breakdown of annotated regions, recent annotation list, and per-region statistics
+                </span></li>
+                <li className="flex gap-3"><Bullet /><span>
+                  <strong className="text-slate-300">Report tab</strong> — session summary, <Mono>Export CSV</Mono> for annotation data, and <Mono>Export JSON</Mono> for full metadata including slide parameters
+                </span></li>
+              </ul>
+            </div>
+            <div className="w-full lg:w-72 xl:w-80 shrink-0 space-y-3">
+              <figure className="overflow-hidden rounded-xl border border-slate-800/60">
+                <img src="/guide/guide-04-study-browser.png" alt="Analysis tab showing slide metadata" className="w-full h-auto block" loading="lazy" />
+                <figcaption className="px-3 py-2 text-[10px] font-mono text-slate-600 border-t border-slate-800/60">Analysis tab — slide metadata</figcaption>
+              </figure>
+              <figure className="overflow-hidden rounded-xl border border-slate-800/60">
+                <img src="/guide/guide-05-left-panel.png" alt="Report tab showing session summary and export options" className="w-full h-auto block" loading="lazy" />
+                <figcaption className="px-3 py-2 text-[10px] font-mono text-slate-600 border-t border-slate-800/60">Report tab — export options</figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
 
         {/* Section 7: Educational Mode */}
         <section className="py-10">
