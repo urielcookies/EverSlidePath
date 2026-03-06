@@ -25,10 +25,10 @@ import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
 import { deleteUploadedSlideFn, addLinkedSlideFn } from '../../server/slideMetadata'
 
-function classifySlideUrl(url: string): string | { type: string; url: string } {
+function classifySlideUrl(url: string): string | null {
   if (url.endsWith('.dzi')) return url
   if (url.endsWith('info.json') || url.includes('/iiif/')) return url
-  return { type: 'image', url }
+  return null
 }
 
 const MOCK_SLIDES = [
@@ -152,10 +152,15 @@ export default function LeftSidebar() {
     const url = linkUrl.trim()
     if (!url) return
     const name = linkName.trim() || url.split('/').pop()?.split('?')[0] || 'Linked Slide'
+    const tilesUrl = classifySlideUrl(url)
+    if (!tilesUrl) {
+      setLinkStatus('error')
+      setTimeout(() => setLinkStatus('idle'), 3000)
+      return
+    }
     setLinkStatus('saving')
     try {
       const { id } = await addLinkedSlideFn({ data: { name, url } })
-      const tilesUrl = classifySlideUrl(url)
       addUploadedSlide({
         id,
         name,
@@ -365,7 +370,7 @@ export default function LeftSidebar() {
                       type="text"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
-                      placeholder="Image, .dzi, or IIIF info.json URL…"
+                      placeholder=".dzi or IIIF info.json URL…"
                       className="flex-1 min-w-0 rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-200 placeholder-slate-600 outline-none focus:border-cyan-500/50 transition-colors"
                     />
                     <button

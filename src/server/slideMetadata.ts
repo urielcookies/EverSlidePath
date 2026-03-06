@@ -13,7 +13,7 @@ export interface SlideMetadata {
   tissueType: string
   scanner: string
   fileSize: string
-  tilesUrl: string | { type: string; url: string }
+  tilesUrl: string
 }
 
 const MOCK_SLIDES: Record<string, SlideMetadata> = {
@@ -71,10 +71,10 @@ export const fetchSlideMetadata = createServerFn({ method: 'GET' })
   })
   .handler(async ({ data: id }) => getSlideMetadata(id))
 
-function classifySlideUrl(url: string): string | { type: string; url: string } {
+function classifySlideUrl(url: string): string | null {
   if (url.endsWith('.dzi')) return url
   if (url.endsWith('info.json') || url.includes('/iiif/')) return url
-  return { type: 'image', url }
+  return null
 }
 
 // Returns all uploaded/linked slides stored in D1
@@ -85,22 +85,24 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
     const result = await db
       .prepare(`SELECT id, name, metadata_json FROM slides ORDER BY created_at DESC`)
       .all<{ id: string; name: string; metadata_json: string }>()
-    return (result.results ?? []).map((row) => {
-      let tilesUrl: string | { type: string; url: string }
+    const slides: SlideMetadata[] = []
+    for (const row of result.results ?? []) {
+      let tilesUrl: string
       try {
         const meta = JSON.parse(row.metadata_json)
         if (meta.url) {
-          // URL-linked slide — use URL directly (DZI string or image object)
-          tilesUrl = classifySlideUrl(meta.url)
+          // URL-linked slide — only DZI and IIIF are supported
+          const classified = classifySlideUrl(meta.url)
+          if (!classified) continue
+          tilesUrl = classified
         } else {
-          // R2-stored slide
-          const r2Key = meta.r2Key ?? row.id
-          tilesUrl = { type: 'image', url: `/api/r2/${encodeURIComponent(r2Key)}` }
+          // R2-stored slides are no longer supported
+          continue
         }
       } catch {
-        tilesUrl = { type: 'image', url: `/api/r2/${encodeURIComponent(row.id)}` }
+        continue
       }
-      return {
+      slides.push({
         id: row.id,
         name: row.name,
         scanDate: new Date().toISOString().slice(0, 10),
@@ -112,8 +114,9 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
         scanner: '—',
         fileSize: '—',
         tilesUrl,
-      } satisfies SlideMetadata
-    })
+      } satisfies SlideMetadata)
+    }
+    return slides
   })
 
 // Saves a URL-linked slide to D1 so it persists across sessions
