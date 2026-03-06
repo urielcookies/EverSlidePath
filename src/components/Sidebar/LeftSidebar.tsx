@@ -20,6 +20,7 @@ import {
   addUploadedSlide,
   setAnnotationCustomName,
   removeUploadedSlide,
+  setLayerVisibility,
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
@@ -227,11 +228,7 @@ export default function LeftSidebar() {
     }
   }
   const [confirmClear, setConfirmClear] = useState(false)
-  const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({
-    annotations: true,
-    cells: true,
-    tissue: true,
-  })
+  const layerVisibility = usePathologyStore((s) => s.layerVisibility)
 
   const handleClearAll = () => {
     if (confirmClear) {
@@ -813,7 +810,10 @@ export default function LeftSidebar() {
                       key={layer.id}
                       className="flex items-center gap-2 rounded px-1 py-1.5 hover:bg-slate-800/30 cursor-pointer"
                       onClick={() =>
-                        setLayerVisibility((prev) => ({ ...prev, [layer.id]: !prev[layer.id] }))
+                        setLayerVisibility(
+                          layer.id as keyof typeof layerVisibility,
+                          !layerVisibility[layer.id as keyof typeof layerVisibility],
+                        )
                       }
                     >
                       <EyeIcon visible={layerVisibility[layer.id]} />

@@ -83,6 +83,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const annotations = usePathologyStore((s) => s.annotations)
   const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
   const deleteMode = usePathologyStore((s) => s.deleteMode)
+  const layerVisibility = usePathologyStore((s) => s.layerVisibility)
   const aiRunning = usePathologyStore((s) => s.aiRunning)
   const aiProgress = usePathologyStore((s) => s.aiProgress)
 
@@ -724,7 +725,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
       {svgTransform.scale > 0 && (
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ zIndex: 5 }}
+          style={{ zIndex: 5, display: layerVisibility.annotations ? undefined : 'none' }}
         >
           <defs>
             <filter id="marker-glow" x="-60%" y="-60%" width="220%" height="220%">
@@ -746,11 +747,19 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
           {/* Single <g> transform: O(1) DOM update per viewport event */}
           <g transform={`translate(${svgTransform.tx}, ${svgTransform.ty}) scale(${svgTransform.scale})`}>
             <AnimatePresence>
-              {annotations.map((ann) => {
-                const isHovered = hoveredAnnotationId === ann.id
-                const isDragging = dragState?.id === ann.id
-                return renderShape(ann, isDragging, isHovered)
-              })}
+              {annotations
+                .filter((ann) => {
+                  const isCell = ann.shape === 'circle' || ann.shape === 'square' || ann.shape === 'pin'
+                  const isTissue = ann.shape === 'polygon' || ann.shape === 'freehand'
+                  if (isCell && !layerVisibility.cells) return false
+                  if (isTissue && !layerVisibility.tissue) return false
+                  return true
+                })
+                .map((ann) => {
+                  const isHovered = hoveredAnnotationId === ann.id
+                  const isDragging = dragState?.id === ann.id
+                  return renderShape(ann, isDragging, isHovered)
+                })}
             </AnimatePresence>
 
             {/* Ghost shape preview during active draw */}

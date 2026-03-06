@@ -50,6 +50,7 @@ export interface PathologyState {
   syncStatus: 'idle' | 'saving' | 'saved' | 'error'
   lastSavedAt: number | null
   deleteMode: boolean
+  layerVisibility: { annotations: boolean; cells: boolean; tissue: boolean }
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -84,6 +85,7 @@ export const pathologyStore = new Store<PathologyState>({
   syncStatus: 'idle',
   lastSavedAt: null,
   deleteMode: false,
+  layerVisibility: { annotations: true, cells: true, tissue: true },
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -214,6 +216,13 @@ export function addUploadedSlide(meta: SlideMetadata): void {
   pathologyStore.setState((prev) => ({
     ...prev,
     uploadedSlideMetadata: { ...prev.uploadedSlideMetadata, [meta.id]: meta },
+  }))
+}
+
+export function setLayerVisibility(layer: keyof PathologyState['layerVisibility'], visible: boolean): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    layerVisibility: { ...prev.layerVisibility, [layer]: visible },
   }))
 }
 
