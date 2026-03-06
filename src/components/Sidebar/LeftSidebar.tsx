@@ -25,6 +25,7 @@ import {
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
 import { deleteUploadedSlideFn, addLinkedSlideFn } from '../../server/slideMetadata'
+import { deleteAllAnnotationsFn } from '../../server/annotationFunctions'
 import { LIBRARY_SLIDES, type LibrarySlide } from '../../lib/slideLibrary'
 
 function classifySlideUrl(url: string): string | null {
@@ -234,6 +235,7 @@ export default function LeftSidebar() {
     if (confirmClear) {
       clearAnnotations()
       setConfirmClear(false)
+      deleteAllAnnotationsFn({ data: activeSlideId }).catch(console.error)
     } else {
       setConfirmClear(true)
       setTimeout(() => setConfirmClear(false), 2500)
