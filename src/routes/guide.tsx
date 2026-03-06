@@ -27,6 +27,12 @@ function GuidePage() {
         </Link>
 
         <Link
+          to="/about"
+          className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
+        >
+          About
+        </Link>
+        <Link
           to="/viewer"
           search={undefined as never}
           className="flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium text-[#020617] transition-all hover:brightness-110"
