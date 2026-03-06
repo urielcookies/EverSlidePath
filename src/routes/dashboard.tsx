@@ -9,6 +9,7 @@ import type { StudentProgress, ProgressStatus } from '../server/progressFunction
 import { useAuthStore, clearAuthUser } from '../store/authStore'
 import { clearStoredToken, getStoredToken } from '../lib/authClient'
 import { logoutFn } from '../server/authFunctions'
+import ProgressRing from '../components/ProgressRing'
 
 export const Route = createFileRoute('/dashboard')({
   component: DashboardPage,
@@ -51,49 +52,6 @@ function StatusBadge({ status }: { status: ProgressStatus }) {
     >
       {cfg.label}
     </span>
-  )
-}
-
-// Inline SVG progress ring — extracted to ProgressRing component in Phase 5
-function ProgressRing({
-  value,
-  size = 40,
-  stroke = 3,
-  color = '#22d3ee',
-  label,
-}: {
-  value: number   // 0–1
-  size?: number
-  stroke?: number
-  color?: string
-  label?: string
-}) {
-  const r = (size - stroke * 2) / 2
-  const circ = 2 * Math.PI * r
-  const dash = Math.max(0, Math.min(1, value)) * circ
-
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(71,85,105,0.3)" strokeWidth={stroke} />
-        <circle
-          cx={size / 2} cy={size / 2} r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeDasharray={`${dash} ${circ}`}
-          strokeLinecap="round"
-        />
-      </svg>
-      {label && (
-        <span
-          className="absolute text-[9px] font-mono font-semibold"
-          style={{ color }}
-        >
-          {label}
-        </span>
-      )}
-    </div>
   )
 }
 
