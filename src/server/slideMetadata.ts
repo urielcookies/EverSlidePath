@@ -13,7 +13,7 @@ export interface SlideMetadata {
   tissueType: string
   scanner: string
   fileSize: string
-  tilesUrl: string
+  tilesUrl: string | { type: string; url: string }
 }
 
 const MOCK_SLIDES: Record<string, SlideMetadata> = {
@@ -87,7 +87,7 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
       .all<{ id: string; name: string; metadata_json: string }>()
     const slides: SlideMetadata[] = []
     for (const row of result.results ?? []) {
-      let tilesUrl: string
+      let tilesUrl: string | { type: string; url: string }
       try {
         const meta = JSON.parse(row.metadata_json)
         if (meta.url) {
