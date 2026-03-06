@@ -184,6 +184,18 @@ export default function CaseContextPanel() {
                   {submittedAtLabel(usePathologyStore.getState?.()?.submittedAt ?? null)}
                 </div>
 
+                {/* Annotations locked indicator */}
+                <div
+                  className="flex items-center gap-1.5 rounded px-2 py-1.5"
+                  style={{ background: 'rgba(71,85,105,0.15)', border: '1px solid rgba(71,85,105,0.25)' }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#475569" strokeWidth="1.3">
+                    <rect x="2" y="4.5" width="6" height="4.5" rx="1" />
+                    <path d="M3.5 4.5V3a1.5 1.5 0 0 1 3 0v1.5" />
+                  </svg>
+                  <span className="text-[10px] text-slate-600 font-mono">Annotations locked — read only</span>
+                </div>
+
                 {/* Diagnosis reveal */}
                 {revealedDiagnosis !== null && (
                   <div>
