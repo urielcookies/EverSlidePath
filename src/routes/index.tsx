@@ -35,7 +35,7 @@ function LandingPage() {
           </Link>
           <Link
             to="/guide"
-            className="rounded-md border border-slate-700 px-3 py-1 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100 transition-colors"
+            className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
           >
             Guide
           </Link>

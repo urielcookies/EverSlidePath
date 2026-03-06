@@ -34,6 +34,12 @@ function AboutPage() {
             Home
           </Link>
           <Link
+            to="/guide"
+            className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            Guide
+          </Link>
+          <Link
             to="/viewer"
             className="flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium text-[#020617] transition-all hover:brightness-110"
             style={{ background: '#22d3ee' }}
