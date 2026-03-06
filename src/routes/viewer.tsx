@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
@@ -104,6 +104,8 @@ function SyncStatus() {
 
 function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
   const [copied, setCopied] = useState(false)
+  const role = useAuthStore((s) => s.user?.role)
+  const dest = role === 'student' ? '/dashboard' : role === 'instructor' ? '/instructor' : '/'
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => {
@@ -118,7 +120,10 @@ function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
       style={{ background: 'rgba(15, 23, 42, 0.98)' }}
     >
       {/* Logo + wordmark */}
-      <div className="flex items-center gap-2 pr-4 border-r border-slate-700/50">
+      <Link
+        to={dest}
+        className="flex items-center gap-2 pr-4 border-r border-slate-700/50 hover:opacity-80 transition-opacity"
+      >
         <div className="flex h-5 w-5 items-center justify-center rounded bg-cyan-500/20 border border-cyan-500/40">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <circle cx="5" cy="5" r="3" stroke="#22d3ee" strokeWidth="1.2" />
@@ -126,7 +131,7 @@ function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
           </svg>
         </div>
         <span className="text-xs font-semibold tracking-wide text-slate-200">EverSlidePath</span>
-      </div>
+      </Link>
 
       {/* Breadcrumb */}
       {metadata && (
@@ -151,11 +156,20 @@ function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
       {/* Submit Case button — only renders for students with active unsubmitted case */}
       <SubmitCaseButton />
 
+      {/* Guide link */}
+      <Link
+        to="/guide"
+        className="flex h-6 items-center gap-1 rounded border border-slate-700/50 px-2 text-[10px] font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
+        title="View guide"
+      >
+        Guide
+      </Link>
+
       {/* Share button */}
       <button
         onClick={handleShare}
         title="Copy shareable link"
-        className="ml-2 flex h-6 items-center gap-1.5 rounded border border-slate-700/50 px-2 text-[10px] font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
+        className="flex h-6 items-center gap-1.5 rounded border border-slate-700/50 px-2 text-[10px] font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
       >
         {copied ? (
           <>
