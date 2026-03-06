@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { useEffect, useRef, useState } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
@@ -7,6 +7,7 @@ import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctio
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
 import RightSidebar from '../components/Sidebar/RightSidebar'
 import PathologyViewer from '../components/Viewer/PathologyViewer'
+import { LIBRARY_SLIDES } from '../lib/slideLibrary'
 import {
   toggleLeftSidebar,
   usePathologyStore,
@@ -14,12 +15,17 @@ import {
   setSyncStatus,
   setLastSavedAt,
   setUploadedSlides,
+  setActiveSlide,
+  addUploadedSlide,
   pathologyStore,
 } from '../store/pathologyStore'
 
 const SAVE_DEBOUNCE_MS = 1500
 
 export const Route = createFileRoute('/viewer')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    slide: typeof search.slide === 'string' ? search.slide : undefined,
+  }),
   loader: async () => ({}),
   component: ViewerPage,
 })
@@ -86,6 +92,15 @@ function SyncStatus() {
 }
 
 function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <header
       className="flex h-9 flex-shrink-0 items-center gap-3 border-b border-slate-800/60 px-4"
@@ -122,10 +137,33 @@ function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
         </div>
       )}
 
+      {/* Share button */}
+      <button
+        onClick={handleShare}
+        title="Copy shareable link"
+        className="ml-2 flex h-6 items-center gap-1.5 rounded border border-slate-700/50 px-2 text-[10px] font-mono text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
+      >
+        {copied ? (
+          <>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5l2 2 4-4" stroke="#34d399" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span style={{ color: '#34d399' }}>Copied!</span>
+          </>
+        ) : (
+          <>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <path d="M6.5 1H9v2.5M9 1L5.5 4.5M4 2H2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V6" />
+            </svg>
+            Share
+          </>
+        )}
+      </button>
+
       {/* Sidebar toggle */}
       <button
         onClick={toggleLeftSidebar}
-        className="ml-2 flex h-6 w-6 items-center justify-center rounded hover:bg-slate-700/60 transition-colors"
+        className="flex h-6 w-6 items-center justify-center rounded hover:bg-slate-700/60 transition-colors"
         title="Toggle left sidebar"
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#64748b" strokeWidth="1.5">
@@ -161,9 +199,42 @@ function ViewerPage() {
   const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
 
+  const { slide: slideParam } = Route.useSearch()
+  const navigate = useNavigate({ from: '/viewer' })
+
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // true while loading a slide's annotations — prevents spurious auto-saves
   const slideLoadingRef = useRef(true)
+
+  // On mount: resolve ?slide= param → activate the requested slide
+  useEffect(() => {
+    if (!slideParam) return
+    // Library slides aren't in D1 — reconstruct from LIBRARY_SLIDES
+    if (slideParam.startsWith('lib-')) {
+      const libSlide = LIBRARY_SLIDES.find((s) => s.id === slideParam)
+      if (libSlide) {
+        addUploadedSlide({
+          id: libSlide.id,
+          name: libSlide.name,
+          scanDate: '—',
+          objectiveLens: '—',
+          micronsPerPixel: libSlide.mpp,
+          dimensions: { width: libSlide.width, height: libSlide.height },
+          stainProtocol: libSlide.stain,
+          tissueType: '—',
+          scanner: libSlide.scanner,
+          fileSize: '—',
+          tilesUrl: libSlide.source,
+        })
+      }
+    }
+    setActiveSlide(slideParam)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ?slide= param in sync with active slide
+  useEffect(() => {
+    navigate({ search: { slide: activeSlideId }, replace: true })
+  }, [activeSlideId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch persisted slides from D1 on mount
   useEffect(() => {
