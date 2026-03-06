@@ -113,7 +113,7 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
       .bind(data.slideId, data.slideId, '{}')
       .run()
 
-    // Bulk upsert — D1 batch runs all statements in one transaction
+    // Bulk upsert — D1 batch limit is 100 statements; chunk accordingly
     const stmts = data.annotations.map((ann) =>
       db.prepare(`
         INSERT INTO annotations (id, slide_id, type, label, x, y, shape, radius, color, points_json, name, confidence, session_metadata_json, case_id, user_id, created_at)
@@ -148,7 +148,10 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
       )
     )
 
-    await db.batch(stmts)
+    const CHUNK = 100
+    for (let i = 0; i < stmts.length; i += CHUNK) {
+      await db.batch(stmts.slice(i, i + CHUNK))
+    }
     return { ok: true, saved: data.annotations.length }
   })
 
