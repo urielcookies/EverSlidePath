@@ -57,6 +57,10 @@ export interface PathologyState {
   activeCase: Case | CaseForStudent | null
   groundTruthAnnotations: Annotation[]
   showGroundTruth: boolean
+  // Submission state (Phase 4)
+  isSubmitted: boolean
+  submittedAt: number | null
+  revealedDiagnosis: string | null
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -96,6 +100,9 @@ export const pathologyStore = new Store<PathologyState>({
   activeCase: null,
   groundTruthAnnotations: [],
   showGroundTruth: false,
+  isSubmitted: false,
+  submittedAt: null,
+  revealedDiagnosis: null,
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -256,4 +263,22 @@ export function setGroundTruthAnnotations(anns: Annotation[]): void {
 
 export function setShowGroundTruth(v: boolean): void {
   pathologyStore.setState((prev) => ({ ...prev, showGroundTruth: v }))
+}
+
+export function setSubmissionState(isSubmitted: boolean, submittedAt: number | null, diagnosis: string | null): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    isSubmitted,
+    submittedAt,
+    revealedDiagnosis: diagnosis,
+  }))
+}
+
+export function clearSubmissionState(): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    isSubmitted: false,
+    submittedAt: null,
+    revealedDiagnosis: null,
+  }))
 }
