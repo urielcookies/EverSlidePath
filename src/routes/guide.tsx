@@ -187,14 +187,14 @@ function GuidePage() {
                 </span></li>
               </ul>
             </div>
-            <div className="w-full lg:w-72 xl:w-80 shrink-0 space-y-3">
-              <figure className="overflow-hidden rounded-xl border border-slate-800/60">
+            <div className="w-full lg:w-auto shrink-0 flex flex-row gap-3">
+              <figure className="flex-1 overflow-hidden rounded-xl border border-slate-800/60">
                 <img src="/guide/guide-04-study-browser.png" alt="Analysis tab showing slide metadata" className="w-full h-auto block" loading="lazy" />
-                <figcaption className="px-3 py-2 text-[10px] font-mono text-slate-600 border-t border-slate-800/60">Analysis tab — slide metadata</figcaption>
+                <figcaption className="px-3 py-2 text-[10px] font-mono text-slate-600 border-t border-slate-800/60">Analysis tab</figcaption>
               </figure>
-              <figure className="overflow-hidden rounded-xl border border-slate-800/60">
+              <figure className="flex-1 overflow-hidden rounded-xl border border-slate-800/60">
                 <img src="/guide/guide-05-left-panel.png" alt="Report tab showing session summary and export options" className="w-full h-auto block" loading="lazy" />
-                <figcaption className="px-3 py-2 text-[10px] font-mono text-slate-600 border-t border-slate-800/60">Report tab — export options</figcaption>
+                <figcaption className="px-3 py-2 text-[10px] font-mono text-slate-600 border-t border-slate-800/60">Report tab</figcaption>
               </figure>
             </div>
           </div>
