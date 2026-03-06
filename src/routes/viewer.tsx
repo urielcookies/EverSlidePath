@@ -4,8 +4,9 @@ import { toast } from 'sonner'
 import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
 import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
-import { getCaseFn } from '../server/caseFunctions'
-import { upsertProgressFn } from '../server/progressFunctions'
+import { getCaseFn, getGroundTruthAnnotationsFn } from '../server/caseFunctions'
+import { upsertProgressFn, getSubmissionStatusFn } from '../server/progressFunctions'
+import SubmitCaseButton from '../components/Viewer/SubmitCaseButton'
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
 import RightSidebar from '../components/Sidebar/RightSidebar'
 import PathologyViewer from '../components/Viewer/PathologyViewer'
@@ -20,6 +21,10 @@ import {
   setActiveSlide,
   addUploadedSlide,
   setActiveCase,
+  setAnnotationMode,
+  setSubmissionState,
+  setGroundTruthAnnotations,
+  clearSubmissionState,
   pathologyStore,
 } from '../store/pathologyStore'
 import { useAuthStore } from '../store/authStore'
@@ -143,6 +148,9 @@ function TopBar({ metadata }: { metadata: SlideMetadata | null }) {
         </div>
       )}
 
+      {/* Submit Case button — only renders for students with active unsubmitted case */}
+      <SubmitCaseButton />
+
       {/* Share button */}
       <button
         onClick={handleShare}
@@ -262,6 +270,29 @@ function ViewerPage() {
     }).catch(() => {})
   }, [caseParam, authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Check existing submission state on mount — restores locked UI if already submitted
+  useEffect(() => {
+    if (!caseParam || !authUser || authUser.role !== 'student') {
+      clearSubmissionState()
+      return
+    }
+    getSubmissionStatusFn({ data: caseParam })
+      .then((progress) => {
+        if (progress?.status === 'submitted') {
+          setSubmissionState(true, progress.completed_at ? progress.completed_at * 1000 : Date.now(), null)
+          // Lock annotation mode immediately
+          setAnnotationMode(false)
+          // Load ground truth so toggle is available
+          getGroundTruthAnnotationsFn({ data: caseParam })
+            .then(setGroundTruthAnnotations)
+            .catch(() => {})
+        } else {
+          clearSubmissionState()
+        }
+      })
+      .catch(() => clearSubmissionState())
+  }, [caseParam, authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch persisted slides from D1 on mount
   useEffect(() => {
     fetchUploadedSlidesFn().then(setUploadedSlides).catch(() => {})
@@ -293,6 +324,8 @@ function ViewerPage() {
   // Debounced auto-save whenever annotations change
   useEffect(() => {
     if (slideLoadingRef.current) return
+    // Don't save after submission — annotations are locked
+    if (pathologyStore.state.isSubmitted) return
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
 
     setSyncStatus('saving')
