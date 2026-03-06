@@ -62,8 +62,8 @@ function GuidePage() {
         <SideSection
           label="01"
           title="Viewer Overview"
-          screenshot="/guide/guide-01-overview.png"
-          screenshotAlt="Viewer overview showing all four UI zones"
+          screenshot="/guide/guide-04-study-browser.png"
+          screenshotAlt="Slide metadata and analysis panel"
           cropTall
         >
           <p className="text-slate-400 leading-relaxed mb-4">
@@ -93,7 +93,7 @@ function GuidePage() {
         <SideSection
           label="02"
           title="Loading Slides"
-          screenshot="/guide/guide-04-study-browser.png"
+          screenshot="/guide/guide-01-overview.png"
           screenshotAlt="Study Browser panel showing slide list and URL input"
           flip
           cropTall
