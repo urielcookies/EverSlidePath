@@ -50,6 +50,8 @@ interface PathologyViewerProps {
 export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: PathologyViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<any>(null)
+  // Always holds the latest tilesUrl — used to detect changes during async OSD init
+  const currentTilesUrlRef = useRef(tilesUrl)
   const annotationModeRef = useRef(false)
   const annotationLabelRef = useRef<AnnotationLabel>('Tumor')
   const annotationShapeRef = useRef<AnnotationShape>('circle')
@@ -93,6 +95,7 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   useEffect(() => { annotationShapeRef.current = annotationShape }, [annotationShape])
   useEffect(() => { activeColorRef.current = activeColor }, [activeColor])
   useEffect(() => { annotationCustomNameRef.current = annotationCustomName }, [annotationCustomName])
+  useEffect(() => { currentTilesUrlRef.current = tilesUrl }, [tilesUrl])
 
   // Stable refs for polygon commit/cancel — updated every render so OSD handlers never go stale
   const commitPolygonRef = useRef<() => void>(() => {})
@@ -201,6 +204,17 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
 
       viewerRef.current = viewer
       setViewerInstance(viewer)
+
+      // If tilesUrl changed while OSD was loading (async import), apply the correct slide now.
+      // This fixes the race where setActiveSlide(slideParam) fires before the import resolves.
+      const initKey = typeof tilesUrl === 'string' ? tilesUrl : JSON.stringify(tilesUrl)
+      const latestUrl = currentTilesUrlRef.current
+      const latestKey = typeof latestUrl === 'string' ? latestUrl : JSON.stringify(latestUrl)
+      if (initKey !== latestKey) {
+        setTilesLoaded(false)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(viewer as any).open(latestUrl)
+      }
 
       // Shared helper — keeps markers pinned to tissue coords (O(1) per call)
       const syncViewportTransform = () => {
