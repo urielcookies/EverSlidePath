@@ -43,17 +43,41 @@ function rowToAnnotation(row: AnnotationRow): Annotation {
 }
 
 // ─── getAnnotations ───────────────────────────────────────────────────────────
+interface GetAnnotationsInput {
+  slideId: string
+  caseId?: string | null
+  userId?: string | null
+}
+
 export const getAnnotationsFn = createServerFn({ method: 'GET' })
-  .inputValidator((slideId: unknown) => {
-    if (typeof slideId !== 'string') throw new Error('slideId must be a string')
-    return slideId
+  .inputValidator((data: unknown) => {
+    // Accept either a plain slideId string (legacy) or the new { slideId, caseId, userId } shape
+    if (typeof data === 'string') return { slideId: data, caseId: null, userId: null } as GetAnnotationsInput
+    const d = data as GetAnnotationsInput
+    if (typeof d?.slideId !== 'string') throw new Error('slideId must be a string')
+    return { slideId: d.slideId, caseId: d.caseId ?? null, userId: d.userId ?? null }
   })
-  .handler(async ({ data: slideId }): Promise<Annotation[]> => {
-    const db = await getDB()
+  .handler(async ({ data }): Promise<Annotation[]> => {
+    const db = getDB()
     if (!db) return []
+
+    // Case-scoped query: fetch annotations for a specific user+case (student workflow)
+    if (data.caseId && data.userId) {
+      const result = await db
+        .prepare(`
+          SELECT * FROM annotations
+          WHERE slide_id = ? AND case_id = ? AND user_id = ? AND is_ground_truth = 0
+          ORDER BY created_at ASC
+        `)
+        .bind(data.slideId, data.caseId, data.userId)
+        .all<AnnotationRow>()
+      return (result.results ?? []).map(rowToAnnotation)
+    }
+
+    // Anonymous / legacy flow: global annotations with no case scope
     const result = await db
-      .prepare('SELECT * FROM annotations WHERE slide_id = ? ORDER BY created_at ASC')
-      .bind(slideId)
+      .prepare('SELECT * FROM annotations WHERE slide_id = ? AND case_id IS NULL ORDER BY created_at ASC')
+      .bind(data.slideId)
       .all<AnnotationRow>()
     return (result.results ?? []).map(rowToAnnotation)
   })
@@ -63,6 +87,8 @@ interface SaveAnnotationsInput {
   slideId: string
   annotations: Annotation[]
   sessionMeta?: { threshold: number; inferenceMs: number } | null
+  caseId?: string | null
+  userId?: string | null
 }
 
 export const saveAnnotationsFn = createServerFn({ method: 'POST' })
@@ -73,11 +99,13 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
     return d
   })
   .handler(async ({ data }): Promise<{ ok: boolean; saved: number }> => {
-    const db = await getDB()
+    const db = getDB()
     if (!db) return { ok: false, saved: 0 }
     if (data.annotations.length === 0) return { ok: true, saved: 0 }
 
     const sessionJson = data.sessionMeta ? JSON.stringify(data.sessionMeta) : null
+    const caseId = data.caseId ?? null
+    const userId = data.userId ?? null
 
     // Ensure slide row exists
     await db
@@ -88,8 +116,8 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
     // Bulk upsert — D1 batch runs all statements in one transaction
     const stmts = data.annotations.map((ann) =>
       db.prepare(`
-        INSERT INTO annotations (id, slide_id, type, label, x, y, shape, radius, color, points_json, name, confidence, session_metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO annotations (id, slide_id, type, label, x, y, shape, radius, color, points_json, name, confidence, session_metadata_json, case_id, user_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           label       = excluded.label,
           x           = excluded.x,
@@ -114,6 +142,8 @@ export const saveAnnotationsFn = createServerFn({ method: 'POST' })
         ann.name ?? null,
         null,
         sessionJson,
+        caseId,
+        userId,
         ann.createdAt,
       )
     )
@@ -130,7 +160,7 @@ export const deleteAnnotationFn = createServerFn({ method: 'POST' })
     return d
   })
   .handler(async ({ data }): Promise<{ ok: boolean }> => {
-    const db = await getDB()
+    const db = getDB()
     if (!db) return { ok: false }
     await db.prepare('DELETE FROM annotations WHERE id = ?').bind(data.id).run()
     return { ok: true }
@@ -157,7 +187,7 @@ export const seedDemoAnnotationsFn = createServerFn({ method: 'POST' })
     return slideId
   })
   .handler(async ({ data: slideId }): Promise<{ ok: boolean; seeded: number }> => {
-    const db = await getDB()
+    const db = getDB()
     if (!db) return { ok: false, seeded: 0 }
 
     // Check existing count — only seed if empty
@@ -193,7 +223,7 @@ export const deleteAllAnnotationsFn = createServerFn({ method: 'POST' })
     return slideId
   })
   .handler(async ({ data: slideId }): Promise<{ ok: boolean }> => {
-    const db = await getDB()
+    const db = getDB()
     if (!db) return { ok: false }
     await db.prepare('DELETE FROM annotations WHERE slide_id = ?').bind(slideId).run()
     return { ok: true }

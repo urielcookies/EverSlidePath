@@ -1,6 +1,8 @@
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { runWithEnv } from './server/workerEnv'
 import type { WorkerBindings } from './server/workerEnv'
+import { runWithSession } from './server/session'
+import type { SessionUser } from './server/session'
 
 const startFetch = createStartHandler(defaultStreamHandler)
 
@@ -32,8 +34,40 @@ export default {
       return new Response(obj.body, { headers })
     }
 
+    // Resolve session from Bearer token if present
+    let sessionUser: SessionUser | null = null
+    const authHeader = request.headers.get('Authorization')
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (token && env.DB) {
+      interface SessionRow {
+        id: string
+        role: 'instructor' | 'student'
+        username: string | null
+        display_name: string
+        class_code: string | null
+      }
+      const row = await (env.DB as any)
+        .prepare(`
+          SELECT u.id, u.role, u.username, u.display_name, u.class_code
+          FROM sessions s
+          JOIN users u ON u.id = s.user_id
+          WHERE s.token = ? AND s.expires_at > unixepoch()
+        `)
+        .bind(token)
+        .first<SessionRow>()
+      if (row) {
+        sessionUser = {
+          id: row.id,
+          role: row.role,
+          username: row.username,
+          display_name: row.display_name,
+          class_code: row.class_code,
+        }
+      }
+    }
+
     // Capture the Worker env in AsyncLocalStorage so server functions can access
     // bindings (DB, BUCKET) without relying on the non-existent cloudflare:env module.
-    return runWithEnv(env, () => startFetch(request))
+    return runWithEnv(env, () => runWithSession(sessionUser, () => startFetch(request)))
   },
 }

@@ -10,12 +10,36 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ViewerRouteImport } from './routes/viewer'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as JoinRouteImport } from './routes/join'
+import { Route as InstructorRouteImport } from './routes/instructor'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 
 const ViewerRoute = ViewerRouteImport.update({
   id: '/viewer',
   path: '/viewer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinRoute = JoinRouteImport.update({
+  id: '/join',
+  path: '/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InstructorRoute = InstructorRouteImport.update({
+  id: '/instructor',
+  path: '/instructor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -32,30 +56,68 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/dashboard': typeof DashboardRoute
+  '/instructor': typeof InstructorRoute
+  '/join': typeof JoinRoute
+  '/login': typeof LoginRoute
   '/viewer': typeof ViewerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/dashboard': typeof DashboardRoute
+  '/instructor': typeof InstructorRoute
+  '/join': typeof JoinRoute
+  '/login': typeof LoginRoute
   '/viewer': typeof ViewerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/dashboard': typeof DashboardRoute
+  '/instructor': typeof InstructorRoute
+  '/join': typeof JoinRoute
+  '/login': typeof LoginRoute
   '/viewer': typeof ViewerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/viewer'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/dashboard'
+    | '/instructor'
+    | '/join'
+    | '/login'
+    | '/viewer'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/viewer'
-  id: '__root__' | '/' | '/about' | '/viewer'
+  to:
+    | '/'
+    | '/about'
+    | '/dashboard'
+    | '/instructor'
+    | '/join'
+    | '/login'
+    | '/viewer'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/dashboard'
+    | '/instructor'
+    | '/join'
+    | '/login'
+    | '/viewer'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
+  DashboardRoute: typeof DashboardRoute
+  InstructorRoute: typeof InstructorRoute
+  JoinRoute: typeof JoinRoute
+  LoginRoute: typeof LoginRoute
   ViewerRoute: typeof ViewerRoute
 }
 
@@ -66,6 +128,34 @@ declare module '@tanstack/react-router' {
       path: '/viewer'
       fullPath: '/viewer'
       preLoaderRoute: typeof ViewerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join': {
+      id: '/join'
+      path: '/join'
+      fullPath: '/join'
+      preLoaderRoute: typeof JoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/instructor': {
+      id: '/instructor'
+      path: '/instructor'
+      fullPath: '/instructor'
+      preLoaderRoute: typeof InstructorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -88,6 +178,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
+  DashboardRoute: DashboardRoute,
+  InstructorRoute: InstructorRoute,
+  JoinRoute: JoinRoute,
+  LoginRoute: LoginRoute,
   ViewerRoute: ViewerRoute,
 }
 export const routeTree = rootRouteImport

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
 import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
+import { getCaseFn } from '../server/caseFunctions'
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
 import RightSidebar from '../components/Sidebar/RightSidebar'
 import PathologyViewer from '../components/Viewer/PathologyViewer'
@@ -17,14 +18,17 @@ import {
   setUploadedSlides,
   setActiveSlide,
   addUploadedSlide,
+  setActiveCase,
   pathologyStore,
 } from '../store/pathologyStore'
+import { useAuthStore } from '../store/authStore'
 
 const SAVE_DEBOUNCE_MS = 1500
 
 export const Route = createFileRoute('/viewer')({
   validateSearch: (search: Record<string, unknown>) => ({
     slide: typeof search.slide === 'string' ? search.slide : undefined,
+    case: typeof search.case === 'string' ? search.case : undefined,
   }),
   loader: async () => ({}),
   component: ViewerPage,
@@ -199,8 +203,9 @@ function ViewerPage() {
   const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
 
-  const { slide: slideParam } = Route.useSearch()
+  const { slide: slideParam, case: caseParam } = Route.useSearch()
   const navigate = useNavigate({ from: '/viewer' })
+  const authUser = useAuthStore((s) => s.user)
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // true while loading a slide's annotations — prevents spurious auto-saves
@@ -231,22 +236,37 @@ function ViewerPage() {
     setActiveSlide(slideParam)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep ?slide= param in sync with active slide
+  // Keep ?slide= param in sync with active slide (preserve ?case= if present)
   useEffect(() => {
-    navigate({ search: { slide: activeSlideId }, replace: true })
+    navigate({ search: (prev) => ({ ...prev, slide: activeSlideId }), replace: true })
   }, [activeSlideId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch case metadata when ?case= param is present
+  useEffect(() => {
+    if (!caseParam) {
+      setActiveCase(null)
+      return
+    }
+    getCaseFn({ data: caseParam })
+      .then((c) => setActiveCase(c))
+      .catch(() => setActiveCase(null))
+  }, [caseParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch persisted slides from D1 on mount
   useEffect(() => {
     fetchUploadedSlidesFn().then(setUploadedSlides).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load annotations whenever the active slide changes
+  // Load annotations whenever the active slide or case changes
   useEffect(() => {
     slideLoadingRef.current = true
     let cancelled = false
 
-    getAnnotationsFn({ data: activeSlideId })
+    const input = caseParam && authUser
+      ? { slideId: activeSlideId, caseId: caseParam, userId: authUser.id }
+      : { slideId: activeSlideId, caseId: null, userId: null }
+
+    getAnnotationsFn({ data: input })
       .then((anns) => {
         if (!cancelled) {
           loadAnnotations(anns)
@@ -258,7 +278,7 @@ function ViewerPage() {
       .catch(() => { if (!cancelled) slideLoadingRef.current = false })
 
     return () => { cancelled = true }
-  }, [activeSlideId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSlideId, caseParam, authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced auto-save whenever annotations change
   useEffect(() => {
@@ -276,8 +296,16 @@ function ViewerPage() {
         // Read fresh values from store (avoid stale closures)
         const current = pathologyStore.state.annotations
         const slideId = pathologyStore.state.activeSlideId
+        const activeCaseId = pathologyStore.state.activeCaseId
+        const currentUser = authUser
         await saveAnnotationsFn({
-          data: { slideId, annotations: current, sessionMeta },
+          data: {
+            slideId,
+            annotations: current,
+            sessionMeta,
+            caseId: activeCaseId ?? null,
+            userId: currentUser?.id ?? null,
+          },
         })
         setSyncStatus('saved')
         setLastSavedAt(Date.now())

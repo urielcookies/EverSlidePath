@@ -1,6 +1,7 @@
 import { Store } from '@tanstack/store'
 import { useStore } from '@tanstack/react-store'
 import type { SlideMetadata } from '../server/slideMetadata'
+import type { Case, CaseForStudent } from '../server/caseFunctions'
 
 export interface ChannelState {
   visible: boolean
@@ -51,6 +52,11 @@ export interface PathologyState {
   lastSavedAt: number | null
   deleteMode: boolean
   layerVisibility: { annotations: boolean; cells: boolean; tissue: boolean }
+  // Case context (Phase 2+)
+  activeCaseId: string | null
+  activeCase: Case | CaseForStudent | null
+  groundTruthAnnotations: Annotation[]
+  showGroundTruth: boolean
 }
 
 const defaultChannel = (intensity: number): ChannelState => ({
@@ -86,6 +92,10 @@ export const pathologyStore = new Store<PathologyState>({
   lastSavedAt: null,
   deleteMode: false,
   layerVisibility: { annotations: true, cells: true, tissue: true },
+  activeCaseId: null,
+  activeCase: null,
+  groundTruthAnnotations: [],
+  showGroundTruth: false,
 })
 
 export function usePathologyStore<T>(selector: (state: PathologyState) => T): T {
@@ -230,4 +240,20 @@ export function setUploadedSlides(slides: SlideMetadata[]): void {
   const map: Record<string, SlideMetadata> = {}
   for (const s of slides) map[s.id] = s
   pathologyStore.setState((prev) => ({ ...prev, uploadedSlideMetadata: map }))
+}
+
+export function setActiveCase(c: Case | CaseForStudent | null): void {
+  pathologyStore.setState((prev) => ({
+    ...prev,
+    activeCase: c,
+    activeCaseId: c?.id ?? null,
+  }))
+}
+
+export function setGroundTruthAnnotations(anns: Annotation[]): void {
+  pathologyStore.setState((prev) => ({ ...prev, groundTruthAnnotations: anns }))
+}
+
+export function setShowGroundTruth(v: boolean): void {
+  pathologyStore.setState((prev) => ({ ...prev, showGroundTruth: v }))
 }

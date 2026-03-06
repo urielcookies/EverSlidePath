@@ -2,8 +2,12 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { Toaster } from 'sonner'
+import { useEffect } from 'react'
 
 import appCss from '../styles.css?url'
+import { installAuthFetchInterceptor } from '../middleware'
+import { getMeFn } from '../server/authFunctions'
+import { setAuthUser, clearAuthUser } from '../store/authStore'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -18,6 +22,14 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    installAuthFetchInterceptor()
+    getMeFn().then((user) => {
+      if (user) setAuthUser(user)
+      else clearAuthUser()
+    }).catch(() => clearAuthUser())
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <html lang="en">
       <head>
