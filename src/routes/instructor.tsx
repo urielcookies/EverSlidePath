@@ -18,6 +18,8 @@ import {
   getCaseSetWithCasesFn,
 } from '../server/caseSetFunctions'
 import type { CaseSet, CaseSetWithCases } from '../server/caseSetFunctions'
+import { getInstructorProgressSummaryFn } from '../server/progressFunctions'
+import type { ProgressSummary } from '../server/progressFunctions'
 import { fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
 import { LIBRARY_SLIDES } from '../lib/slideLibrary'
@@ -506,6 +508,116 @@ function CreateCaseSetForm({ onCreated }: { onCreated: (cs: CaseSet) => void }) 
   )
 }
 
+// ─── ProgressTable ────────────────────────────────────────────────────────────
+
+const PROGRESS_STATUS_CFG = {
+  not_started: { label: 'Not started', color: '#475569', bg: 'rgba(71,85,105,0.15)',   border: 'rgba(71,85,105,0.3)' },
+  in_progress: { label: 'In progress', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.25)' },
+  submitted:   { label: 'Submitted',   color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.25)' },
+} as const
+
+function ProgressTable({ caseSetId, caseIds }: { caseSetId: string; caseIds: string[] }) {
+  const [rows, setRows] = useState<ProgressSummary[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getInstructorProgressSummaryFn({ data: caseSetId })
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false))
+  }, [caseSetId])
+
+  if (loading) {
+    return (
+      <div className="px-5 py-4 flex items-center justify-center">
+        <span className="text-[11px] text-slate-600 font-mono animate-pulse">Loading progress…</span>
+      </div>
+    )
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="px-5 py-4 text-center">
+        <p className="text-[11px] text-slate-600">No students have opened this course yet.</p>
+      </div>
+    )
+  }
+
+  // Build lookup: studentId → caseId → status
+  const studentNames: Record<string, string> = {}
+  const progressLookup: Record<string, Record<string, ProgressSummary>> = {}
+  for (const r of rows) {
+    studentNames[r.user_id] = r.display_name
+    if (!progressLookup[r.user_id]) progressLookup[r.user_id] = {}
+    progressLookup[r.user_id][r.case_id] = r
+  }
+
+  // Unique case titles in position order
+  const caseTitles: Record<string, string> = {}
+  for (const r of rows) caseTitles[r.case_id] = r.case_title
+
+  const studentIds = Object.keys(studentNames)
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[10px] font-mono">
+        <thead>
+          <tr style={{ borderBottom: '1px solid rgba(51,65,85,0.5)' }}>
+            <th className="px-4 py-2 text-left text-slate-500 font-medium whitespace-nowrap">Student</th>
+            {caseIds.map((cid) => (
+              <th key={cid} className="px-3 py-2 text-center text-slate-500 font-medium whitespace-nowrap max-w-[120px]">
+                <span className="truncate block" title={caseTitles[cid]}>
+                  {caseTitles[cid] ? caseTitles[cid].slice(0, 18) + (caseTitles[cid].length > 18 ? '…' : '') : cid.slice(0, 8)}
+                </span>
+              </th>
+            ))}
+            <th className="px-3 py-2 text-center text-slate-500 font-medium">Done</th>
+          </tr>
+        </thead>
+        <tbody>
+          {studentIds.map((sid) => {
+            const submitted = caseIds.filter((cid) => progressLookup[sid]?.[cid]?.status === 'submitted').length
+            return (
+              <tr
+                key={sid}
+                className="transition-colors hover:bg-slate-800/20"
+                style={{ borderBottom: '1px solid rgba(30,41,59,0.6)' }}
+              >
+                <td className="px-4 py-2 text-slate-300 whitespace-nowrap font-sans text-[11px]">
+                  {studentNames[sid]}
+                </td>
+                {caseIds.map((cid) => {
+                  const p = progressLookup[sid]?.[cid]
+                  const status = p?.status ?? 'not_started'
+                  const cfg = PROGRESS_STATUS_CFG[status]
+                  return (
+                    <td key={cid} className="px-3 py-2 text-center">
+                      <span
+                        className="inline-flex items-center justify-center rounded px-1.5 py-px"
+                        style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}
+                      >
+                        {status === 'not_started' ? '—' : status === 'in_progress' ? '…' : '✓'}
+                      </span>
+                    </td>
+                  )
+                })}
+                <td className="px-3 py-2 text-center">
+                  <span
+                    className="font-semibold"
+                    style={{ color: submitted === caseIds.length && caseIds.length > 0 ? '#34d399' : '#94a3b8' }}
+                  >
+                    {submitted}/{caseIds.length}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ─── CaseSetBuilder ───────────────────────────────────────────────────────────
 
 function CaseSetBuilder({
@@ -520,6 +632,7 @@ function CaseSetBuilder({
   const [cases, setCases] = useState(caseSet.cases as Case[])
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
 
   const caseIdsInSet = new Set(cases.map((c) => c.id))
   const availableCases = allCases.filter((c) => !caseIdsInSet.has(c.id))
@@ -672,6 +785,31 @@ function CaseSetBuilder({
                 ))}
               </select>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Student progress section */}
+      <div style={{ borderTop: '1px solid rgba(51,65,85,0.4)' }}>
+        <button
+          onClick={() => setShowProgress((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-2.5 text-left transition-colors hover:bg-slate-800/20"
+          style={{ background: 'rgba(10,16,38,0.4)' }}
+        >
+          <span className="text-[11px] font-medium text-slate-400">Student Progress</span>
+          <svg
+            width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#64748b" strokeWidth="1.5"
+            className={`transition-transform ${showProgress ? 'rotate-180' : ''}`}
+          >
+            <path d="M2.5 4.5l3.5 3.5 3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {showProgress && (
+          <div style={{ borderTop: '1px solid rgba(30,41,59,0.6)', background: 'rgba(5,10,24,0.6)' }}>
+            <ProgressTable
+              caseSetId={caseSet.id}
+              caseIds={cases.map((c) => c.id)}
+            />
           </div>
         )}
       </div>
