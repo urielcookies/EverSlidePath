@@ -26,6 +26,7 @@ import { LIBRARY_SLIDES } from '../lib/slideLibrary'
 import { useAuthStore, clearAuthUser } from '../store/authStore'
 import { clearStoredToken, getStoredToken } from '../lib/authClient'
 import { logoutFn } from '../server/authFunctions'
+import ProgressRing from '../components/ProgressRing'
 
 export const Route = createFileRoute('/instructor')({
   component: InstructorPage,
@@ -602,12 +603,15 @@ function ProgressTable({ caseSetId, caseIds }: { caseSetId: string; caseIds: str
                   )
                 })}
                 <td className="px-3 py-2 text-center">
-                  <span
-                    className="font-semibold"
-                    style={{ color: submitted === caseIds.length && caseIds.length > 0 ? '#34d399' : '#94a3b8' }}
-                  >
-                    {submitted}/{caseIds.length}
-                  </span>
+                  <div className="flex items-center justify-center">
+                    <ProgressRing
+                      value={caseIds.length > 0 ? submitted / caseIds.length : 0}
+                      size={32}
+                      stroke={2.5}
+                      color={submitted === caseIds.length && caseIds.length > 0 ? '#34d399' : '#22d3ee'}
+                      label={`${submitted}/${caseIds.length}`}
+                    />
+                  </div>
                 </td>
               </tr>
             )
