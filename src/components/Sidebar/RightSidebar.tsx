@@ -1,19 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { SlideMetadata } from '../../server/slideMetadata'
 import { usePathologyStore, removeAnnotation, setHoveredAnnotation } from '../../store/pathologyStore'
 import { getViewerInstance } from '../../lib/viewerInstance'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 
-const REGION_STATS = {
-  x1: 18_240,
-  y1: 12_880,
-  x2: 26_400,
-  y2: 19_620,
-  areaMicrons: 43_218,
-  perimeter: 29_840,
-  cellDensity: 1_840,
-}
 
 interface Props {
   metadata: SlideMetadata | null
@@ -64,6 +55,25 @@ export default function RightSidebar({ metadata }: Props) {
   const recentAnnotations = [...annotations]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 8)
+
+  const regionStats = useMemo(() => {
+    if (annotations.length === 0) return null
+    const xs = annotations.map((a) => a.imageCoords.x)
+    const ys = annotations.map((a) => a.imageCoords.y)
+    const x1 = Math.min(...xs)
+    const y1 = Math.min(...ys)
+    const x2 = Math.max(...xs)
+    const y2 = Math.max(...ys)
+    const mpp = metadata?.micronsPerPixel ?? 0
+    const widthPx = x2 - x1
+    const heightPx = y2 - y1
+    const areaMicrons = mpp > 0 ? Math.round(widthPx * heightPx * mpp * mpp) : null
+    const perimeterMicrons = mpp > 0 ? Math.round(2 * (widthPx + heightPx) * mpp) : null
+    const cellDensity = areaMicrons && areaMicrons > 0
+      ? Math.round(annotations.length / (areaMicrons / 1_000_000))
+      : null
+    return { x1, y1, x2, y2, areaMicrons, perimeterMicrons, cellDensity }
+  }, [annotations, metadata?.micronsPerPixel])
 
   const flyTo = async (x: number, y: number) => {
     const viewer = getViewerInstance()
@@ -274,31 +284,43 @@ export default function RightSidebar({ metadata }: Props) {
             <div>
               <SectionHeader label="Region Statistics" />
               <div className="px-3 py-2 space-y-1.5">
-                <div>
-                  <span className="pv-label text-[10px]">Bounding Box (px)</span>
-                  <div className="mt-0.5 grid grid-cols-2 gap-x-4">
-                    {[['X₁', REGION_STATS.x1], ['Y₁', REGION_STATS.y1], ['X₂', REGION_STATS.x2], ['Y₂', REGION_STATS.y2]].map(([k, v]) => (
-                      <div key={String(k)} className="flex gap-2">
-                        <span className="pv-label text-[10px]">{k}</span>
-                        <span className="pv-value text-[11px]">{Number(v).toLocaleString()}</span>
+                {!regionStats ? (
+                  <p className="pv-label text-[10px] italic">Place annotations to compute statistics.</p>
+                ) : (
+                  <>
+                    <div>
+                      <span className="pv-label text-[10px]">Bounding Box (px)</span>
+                      <div className="mt-0.5 grid grid-cols-2 gap-x-4">
+                        {([['X₁', regionStats.x1], ['Y₁', regionStats.y1], ['X₂', regionStats.x2], ['Y₂', regionStats.y2]] as const).map(([k, v]) => (
+                          <div key={k} className="flex gap-2">
+                            <span className="pv-label text-[10px]">{k}</span>
+                            <span className="pv-value text-[11px]">{Math.round(v).toLocaleString()}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="border-t border-slate-800/40 pt-1.5 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="pv-label">Area</span>
-                    <span className="pv-value">{REGION_STATS.areaMicrons.toLocaleString()} µm²</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="pv-label">Perimeter</span>
-                    <span className="pv-value">{REGION_STATS.perimeter.toLocaleString()} µm</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="pv-label">Cell Density</span>
-                    <span className="pv-value">{REGION_STATS.cellDensity.toLocaleString()} cells/mm²</span>
-                  </div>
-                </div>
+                    </div>
+                    <div className="border-t border-slate-800/40 pt-1.5 space-y-1">
+                      <div className="flex justify-between">
+                        <span className="pv-label">Area</span>
+                        <span className="pv-value">
+                          {regionStats.areaMicrons !== null ? `${regionStats.areaMicrons.toLocaleString()} µm²` : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="pv-label">Perimeter</span>
+                        <span className="pv-value">
+                          {regionStats.perimeterMicrons !== null ? `${regionStats.perimeterMicrons.toLocaleString()} µm` : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="pv-label">Cell Density</span>
+                        <span className="pv-value">
+                          {regionStats.cellDensity !== null ? `${regionStats.cellDensity.toLocaleString()} cells/mm²` : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
