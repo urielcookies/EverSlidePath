@@ -25,6 +25,12 @@ import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
 import { deleteUploadedSlideFn, addLinkedSlideFn } from '../../server/slideMetadata'
 
+function classifySlideUrl(url: string): string | { type: string; url: string } {
+  if (url.endsWith('.dzi')) return url
+  if (url.endsWith('info.json') || url.includes('/iiif/')) return url
+  return { type: 'image', url }
+}
+
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
   { id: 'slide-002', name: 'LUNG-2024-0118-B', date: '2024-11-20', protocol: 'H&E' },
@@ -149,7 +155,7 @@ export default function LeftSidebar() {
     setLinkStatus('saving')
     try {
       const { id } = await addLinkedSlideFn({ data: { name, url } })
-      const tilesUrl = url.endsWith('.dzi') ? url : { type: 'image', url }
+      const tilesUrl = classifySlideUrl(url)
       addUploadedSlide({
         id,
         name,
@@ -359,7 +365,7 @@ export default function LeftSidebar() {
                       type="text"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
-                      placeholder="Image or .dzi URL…"
+                      placeholder="Image, .dzi, or IIIF info.json URL…"
                       className="flex-1 min-w-0 rounded border border-slate-700/50 bg-slate-800/60 px-2 py-1 text-[11px] text-slate-200 placeholder-slate-600 outline-none focus:border-cyan-500/50 transition-colors"
                     />
                     <button

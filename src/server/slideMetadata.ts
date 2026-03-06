@@ -71,6 +71,12 @@ export const fetchSlideMetadata = createServerFn({ method: 'GET' })
   })
   .handler(async ({ data: id }) => getSlideMetadata(id))
 
+function classifySlideUrl(url: string): string | { type: string; url: string } {
+  if (url.endsWith('.dzi')) return url
+  if (url.endsWith('info.json') || url.includes('/iiif/')) return url
+  return { type: 'image', url }
+}
+
 // Returns all uploaded/linked slides stored in D1
 export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
   .handler(async (): Promise<SlideMetadata[]> => {
@@ -85,9 +91,7 @@ export const fetchUploadedSlidesFn = createServerFn({ method: 'GET' })
         const meta = JSON.parse(row.metadata_json)
         if (meta.url) {
           // URL-linked slide — use URL directly (DZI string or image object)
-          tilesUrl = meta.url.endsWith('.dzi')
-            ? meta.url
-            : { type: 'image', url: meta.url }
+          tilesUrl = classifySlideUrl(meta.url)
         } else {
           // R2-stored slide
           const r2Key = meta.r2Key ?? row.id
@@ -122,8 +126,8 @@ export const addLinkedSlideFn = createServerFn({ method: 'POST' })
   })
   .handler(async ({ data }): Promise<{ id: string }> => {
     const db = getDB()
-    if (!db) throw new Error('DB unavailable')
     const id = crypto.randomUUID()
+    if (!db) return { id }
     const metaJson = JSON.stringify({ url: data.url })
     await db
       .prepare(`INSERT INTO slides (id, name, metadata_json) VALUES (?, ?, ?)`)
