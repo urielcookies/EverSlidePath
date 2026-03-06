@@ -2,6 +2,16 @@ import { createServerFn } from '@tanstack/react-start'
 import { getDB } from './db'
 import { getWorkerEnv } from './workerEnv'
 
+export interface OsdImageSource {
+  Image: {
+    Url: string
+    Format: string
+    TileSize: number
+    Overlap: number
+    Size: { Width: number; Height: number }
+  }
+}
+
 export interface SlideMetadata {
   id: string
   name: string
@@ -13,7 +23,7 @@ export interface SlideMetadata {
   tissueType: string
   scanner: string
   fileSize: string
-  tilesUrl: string | { type: string; url: string }
+  tilesUrl: string | { type: string; url: string } | OsdImageSource
 }
 
 const MOCK_SLIDES: Record<string, SlideMetadata> = {

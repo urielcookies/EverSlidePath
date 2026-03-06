@@ -23,13 +23,109 @@ import {
 } from '../../store/pathologyStore'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
 import { analyzeCurrentView, isUsingFallback } from '../../lib/aiEngine'
-import { deleteUploadedSlideFn, addLinkedSlideFn } from '../../server/slideMetadata'
+import { deleteUploadedSlideFn, addLinkedSlideFn, type OsdImageSource } from '../../server/slideMetadata'
 
 function classifySlideUrl(url: string): string | null {
   if (url.endsWith('.dzi')) return url
   if (url.endsWith('info.json') || url.includes('/iiif/')) return url
   return null
 }
+
+const S3 = 'https://openslide-demo-site.s3.dualstack.us-east-2.amazonaws.com'
+
+interface LibrarySlide {
+  id: string
+  name: string
+  scanner: string
+  stain: string
+  mpp: number
+  width: number
+  height: number
+  source: OsdImageSource
+}
+
+const LIBRARY_SLIDES: LibrarySlide[] = [
+  {
+    id: 'lib-aperio-cmu1',
+    name: 'CMU-1 (Aperio)',
+    scanner: 'Aperio SVS',
+    stain: 'H&E',
+    mpp: 0.499,
+    width: 46000,
+    height: 32893,
+    source: { Image: { Url: `${S3}/aperio/cmu-1/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 46000, Height: 32893 } } },
+  },
+  {
+    id: 'lib-aperio-cmu2',
+    name: 'CMU-2 (Aperio)',
+    scanner: 'Aperio SVS',
+    stain: 'H&E',
+    mpp: 0.499,
+    width: 33264,
+    height: 47736,
+    source: { Image: { Url: `${S3}/aperio/cmu-2/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 33264, Height: 47736 } } },
+  },
+  {
+    id: 'lib-aperio-cmu3',
+    name: 'CMU-3 (Aperio)',
+    scanner: 'Aperio SVS',
+    stain: 'H&E',
+    mpp: 0.499,
+    width: 42240,
+    height: 62160,
+    source: { Image: { Url: `${S3}/aperio/cmu-3/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 42240, Height: 62160 } } },
+  },
+  {
+    id: 'lib-hamamatsu-os1',
+    name: 'OS-1 (Hamamatsu)',
+    scanner: 'Hamamatsu NDPI',
+    stain: 'H&E',
+    mpp: 0.228,
+    width: 85184,
+    height: 68928,
+    source: { Image: { Url: `${S3}/hamamatsu/os-1/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 85184, Height: 68928 } } },
+  },
+  {
+    id: 'lib-hamamatsu-os2',
+    name: 'OS-2 (Hamamatsu)',
+    scanner: 'Hamamatsu NDPI',
+    stain: 'H&E',
+    mpp: 0.228,
+    width: 68864,
+    height: 92928,
+    source: { Image: { Url: `${S3}/hamamatsu/os-2/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 68864, Height: 92928 } } },
+  },
+  {
+    id: 'lib-philips-1',
+    name: 'Philips-1',
+    scanner: 'Philips TIFF',
+    stain: 'H&E',
+    mpp: 0.25,
+    width: 101400,
+    height: 83200,
+    source: { Image: { Url: `${S3}/philips-tiff/philips-1/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 101400, Height: 83200 } } },
+  },
+  {
+    id: 'lib-mirax-fluoro1',
+    name: 'Fluorescence-1 (MIRAX)',
+    scanner: 'MIRAX',
+    stain: 'Fluorescence',
+    mpp: 0.161,
+    width: 46920,
+    height: 33014,
+    source: { Image: { Url: `${S3}/mirax/Mirax2-Fluorescence-1/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 46920, Height: 33014 } } },
+  },
+  {
+    id: 'lib-mirax-fluoro2',
+    name: 'Fluorescence-2 (MIRAX)',
+    scanner: 'MIRAX',
+    stain: 'Fluorescence',
+    mpp: 0.161,
+    width: 46920,
+    height: 33014,
+    source: { Image: { Url: `${S3}/mirax/Mirax2-Fluorescence-2/slide_files/`, Format: 'jpeg', TileSize: 510, Overlap: 1, Size: { Width: 46920, Height: 33014 } } },
+  },
+]
 
 const MOCK_SLIDES = [
   { id: 'slide-001', name: 'BRCA-2024-0042-A', date: '2024-11-14', protocol: 'IF-DAPI-HER2-KI67' },
@@ -147,6 +243,26 @@ export default function LeftSidebar() {
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
   const [linkStatus, setLinkStatus] = useState<'idle' | 'saving' | 'error'>('idle')
+  const [libraryOpen, setLibraryOpen] = useState(false)
+
+  const handleLoadLibrarySlide = (slide: LibrarySlide) => {
+    const alreadyLoaded = uploadedSlideMetadata[slide.id]
+    if (alreadyLoaded) { setActiveSlide(slide.id); return }
+    addUploadedSlide({
+      id: slide.id,
+      name: slide.name,
+      scanDate: '—',
+      objectiveLens: '—',
+      micronsPerPixel: slide.mpp,
+      dimensions: { width: slide.width, height: slide.height },
+      stainProtocol: slide.stain,
+      tissueType: '—',
+      scanner: slide.scanner,
+      fileSize: '—',
+      tilesUrl: slide.source,
+    })
+    setActiveSlide(slide.id)
+  }
 
   const handleLinkSlide = async () => {
     const url = linkUrl.trim()
@@ -356,7 +472,7 @@ export default function LeftSidebar() {
                   })}
                 </ul>
 
-                <div className="px-3 pb-3 space-y-1.5">
+                <div className="px-3 pb-2 space-y-1.5">
                   {/* URL link inputs */}
                   <input
                     type="text"
@@ -387,6 +503,82 @@ export default function LeftSidebar() {
                       {linkStatus === 'saving' ? '…' : linkStatus === 'error' ? 'Error' : 'Add'}
                     </button>
                   </div>
+
+                  {/* Public Library toggle */}
+                  <button
+                    onClick={() => setLibraryOpen((o) => !o)}
+                    className="flex w-full items-center justify-between rounded border border-slate-700/40 bg-slate-800/30 px-2 py-1 text-[10px] text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
+                  >
+                    <span className="tracking-widest uppercase">Public Library</span>
+                    <svg
+                      width="10" height="10" viewBox="0 0 10 10" fill="none"
+                      stroke="currentColor" strokeWidth="1.5"
+                      style={{ transform: libraryOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}
+                    >
+                      <path d="M1 3l4 4 4-4" />
+                    </svg>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {libraryOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <ul className="space-y-0.5 pt-0.5">
+                          {LIBRARY_SLIDES.map((slide) => {
+                            const loaded = !!uploadedSlideMetadata[slide.id]
+                            const isActive = activeSlideId === slide.id
+                            return (
+                              <li
+                                key={slide.id}
+                                className={`flex items-center justify-between rounded px-2 py-1.5 transition-colors ${
+                                  isActive ? 'bg-slate-700/60' : 'hover:bg-slate-800/40'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-[10px] font-medium text-slate-300">{slide.name}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span
+                                      className="rounded px-1 py-px text-[9px] font-mono"
+                                      style={{
+                                        background: slide.stain === 'Fluorescence'
+                                          ? 'rgba(167,139,250,0.12)'
+                                          : 'rgba(34,211,238,0.10)',
+                                        color: slide.stain === 'Fluorescence' ? '#a78bfa' : '#22d3ee',
+                                        border: `1px solid ${slide.stain === 'Fluorescence' ? 'rgba(167,139,250,0.2)' : 'rgba(34,211,238,0.18)'}`,
+                                      }}
+                                    >
+                                      {slide.stain}
+                                    </span>
+                                    <span className="pv-label text-[9px] truncate">{slide.scanner}</span>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleLoadLibrarySlide(slide)}
+                                  className={`ml-2 flex-shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium transition-all ${
+                                    isActive
+                                      ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400'
+                                      : loaded
+                                      ? 'bg-slate-700/40 border-slate-600/40 text-slate-400 hover:text-cyan-400'
+                                      : 'bg-slate-800/60 border-slate-700/40 text-slate-500 hover:text-cyan-400 hover:border-cyan-500/30'
+                                  }`}
+                                >
+                                  {isActive ? 'Active' : loaded ? 'Switch' : 'Load'}
+                                </button>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                        <p className="mt-1.5 px-1 text-[9px] text-slate-600 leading-tight">
+                          Slides from OpenSlide test data · open access
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </motion.div>
             )}
