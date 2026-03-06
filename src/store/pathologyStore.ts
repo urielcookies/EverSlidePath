@@ -9,7 +9,7 @@ export interface ChannelState {
 }
 
 export type AnnotationLabel = 'Tumor' | 'Stroma' | 'Immune' | 'Vessel' | 'Necrosis'
-export type AnnotationShape = 'circle' | 'square' | 'pin' | 'freehand'
+export type AnnotationShape = 'circle' | 'square' | 'pin' | 'freehand' | 'polygon'
 
 export interface Annotation {
   id: string

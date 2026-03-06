@@ -56,6 +56,8 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const activeColorRef = useRef('#f87171')
   const annotationCustomNameRef = useRef('')
   const drawingRef = useRef<DrawingState | null>(null)
+  // Polygon in-progress vertices — ref for stale-closure-safe access in OSD handlers
+  const polygonVerticesRef = useRef<{ x: number; y: number }[]>([])
 
   // scale=0 on init so SVG stays hidden until OSD fires update-viewport
   const [svgTransform, setSvgTransform] = useState({ tx: 0, ty: 0, scale: 0 })
@@ -67,6 +69,8 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   const [tilesLoaded, setTilesLoaded] = useState(false)
   // Live cursor position in image-pixel space — updated on every mouse move
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
+  // Polygon vertices (React state drives re-renders; ref drives OSD handlers)
+  const [polygonVertices, setPolygonVertices] = useState<{ x: number; y: number }[]>([])
 
   const zoomLevel = usePathologyStore((s) => s.zoomLevel)
   const center = usePathologyStore((s) => s.viewportCenter)
@@ -88,6 +92,45 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
   useEffect(() => { annotationShapeRef.current = annotationShape }, [annotationShape])
   useEffect(() => { activeColorRef.current = activeColor }, [activeColor])
   useEffect(() => { annotationCustomNameRef.current = annotationCustomName }, [annotationCustomName])
+
+  // Stable refs for polygon commit/cancel — updated every render so OSD handlers never go stale
+  const commitPolygonRef = useRef<() => void>(() => {})
+  const cancelPolygonRef = useRef<() => void>(() => {})
+  commitPolygonRef.current = () => {
+    const verts = polygonVerticesRef.current
+    if (verts.length < 3) return
+    const cx = verts.reduce((s, p) => s + p.x, 0) / verts.length
+    const cy = verts.reduce((s, p) => s + p.y, 0) / verts.length
+    addAnnotation({
+      id: crypto.randomUUID(),
+      type: 'point',
+      shape: 'polygon',
+      imageCoords: { x: cx, y: cy },
+      radius: DEFAULT_RADIUS,
+      points: verts,
+      label: annotationLabelRef.current,
+      name: annotationCustomNameRef.current || undefined,
+      color: activeColorRef.current,
+      createdAt: Date.now(),
+    })
+    polygonVerticesRef.current = []
+    setPolygonVertices([])
+  }
+  cancelPolygonRef.current = () => {
+    polygonVerticesRef.current = []
+    setPolygonVertices([])
+  }
+
+  // Enter = commit polygon, Escape = cancel — only active while drawing one
+  useEffect(() => {
+    if (polygonVertices.length === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') commitPolygonRef.current()
+      if (e.key === 'Escape') cancelPolygonRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [polygonVertices.length])
 
   // Build CSS filter from channel states (cosmetic approximation)
   const channelFilter = (() => {
@@ -200,9 +243,10 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
       // Clear cursor readout when pointer leaves the canvas
       viewer.addHandler('canvas-exit', () => setCursorPos(null))
 
-      // canvas-press: start drawing a new annotation
+      // canvas-press: start drawing a new annotation (skipped for polygon)
       viewer.addHandler('canvas-press', (event: any) => {
         if (!annotationModeRef.current) return
+        if (annotationShapeRef.current === 'polygon') return
         event.preventDefaultAction = true
         const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
         drawingRef.current = {
@@ -222,9 +266,10 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
         })
       })
 
-      // canvas-drag: update ghost shape as pointer moves
+      // canvas-drag: update ghost shape as pointer moves (skipped for polygon)
       viewer.addHandler('canvas-drag', (event: any) => {
         if (!annotationModeRef.current || !drawingRef.current) return
+        if (annotationShapeRef.current === 'polygon') return
         event.preventDefaultAction = true
         const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
         drawingRef.current.hasDragged = true
@@ -242,9 +287,10 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
         }
       })
 
-      // canvas-release: commit the annotation
+      // canvas-release: commit the annotation (skipped for polygon)
       viewer.addHandler('canvas-release', (event: any) => {
         if (!annotationModeRef.current || !drawingRef.current) return
+        if (annotationShapeRef.current === 'polygon') return
         event.preventDefaultAction = true
         const { startImgX, startImgY, hasDragged, freehandPoints } = drawingRef.current
         const shape = annotationShapeRef.current
@@ -280,10 +326,29 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
         setGhostShape(null)
       })
 
-      // canvas-click: suppress OSD zoom-on-click in annotation mode
+      // canvas-click: suppress OSD zoom; add polygon vertex or snap-close
       viewer.addHandler('canvas-click', (event: any) => {
         if (!annotationModeRef.current) return
         event.preventDefaultAction = true
+        if (annotationShapeRef.current !== 'polygon') return
+
+        const pt = viewer.viewport.viewerElementToImageCoordinates(event.position)
+        const verts = polygonVerticesRef.current
+
+        // Snap-to-close: ≥3 vertices and cursor within 12 screen px of first vertex
+        if (verts.length >= 3) {
+          const v0 = verts[0]
+          const distImg = Math.sqrt((pt.x - v0.x) ** 2 + (pt.y - v0.y) ** 2)
+          const { scale } = svgTransformRef.current
+          if (distImg * scale < 12) {
+            commitPolygonRef.current()
+            return
+          }
+        }
+
+        const next = [...verts, { x: pt.x, y: pt.y }]
+        polygonVerticesRef.current = next
+        setPolygonVertices(next)
       })
     }
 
@@ -470,6 +535,27 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
       )
     }
 
+    if (ann.shape === 'polygon') {
+      const pts = ann.points ?? []
+      if (pts.length < 3) return null
+      const d = `M ${pts[0].x} ${pts[0].y} ` + pts.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ') + ' Z'
+      // Derive fill from stroke color with low opacity for region feel
+      const fillColor = stroke + '22'
+      return (
+        <motion.path
+          key={ann.id}
+          d={d}
+          fill={deleteMode ? 'none' : fillColor}
+          stroke={stroke} strokeWidth={sw} strokeDasharray={strokeDasharray}
+          strokeLinejoin="round"
+          filter={filter}
+          style={sharedStyle}
+          {...motionAnim}
+          {...eventHandlers}
+        />
+      )
+    }
+
     // Default: circle
     return (
       <motion.circle
@@ -487,6 +573,53 @@ export default function PathologyViewer({ tilesUrl, imageWidth, imageHeight }: P
 
   // Ghost shape — dashed preview during active draw
   const renderGhost = () => {
+    // Polygon ghost: vertex dots + edges + live dashed edge to cursor
+    if (annotationShape === 'polygon' && polygonVertices.length > 0 && svgTransform.scale > 0) {
+      const color = activeColor
+      const sw = 1.5 / scale
+      const dashArray = `${4 / scale} ${3 / scale}`
+      const dotR = 4 / scale
+      const snapR = 10 / scale
+      const verts = polygonVertices
+
+      // Check if cursor is snapping to first vertex
+      const snapping = cursorPos && verts.length >= 3 &&
+        Math.sqrt((cursorPos.x - verts[0].x) ** 2 + (cursorPos.y - verts[0].y) ** 2) * scale < 12
+
+      // Build edge path between committed vertices
+      const edgePath = verts.length > 1
+        ? `M ${verts[0].x} ${verts[0].y} ` + verts.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ')
+        : null
+
+      // Live edge from last vertex to cursor (or back to first if snapping)
+      const lastV = verts[verts.length - 1]
+      const liveTarget = snapping ? verts[0] : cursorPos
+      const livePath = liveTarget
+        ? `M ${lastV.x} ${lastV.y} L ${liveTarget.x} ${liveTarget.y}`
+        : null
+
+      return (
+        <>
+          {/* Committed edges */}
+          {edgePath && (
+            <path d={edgePath} fill="none" stroke={color} strokeWidth={sw} strokeLinejoin="round" opacity={0.8} />
+          )}
+          {/* Live edge to cursor */}
+          {livePath && (
+            <path d={livePath} fill="none" stroke={color} strokeWidth={sw} strokeDasharray={dashArray} opacity={0.6} />
+          )}
+          {/* Vertex dots */}
+          {verts.map((v, i) => (
+            <circle key={i} cx={v.x} cy={v.y} r={dotR} fill={color} opacity={0.9} />
+          ))}
+          {/* Snap indicator ring on first vertex */}
+          {snapping && (
+            <circle cx={verts[0].x} cy={verts[0].y} r={snapR} fill="none" stroke={color} strokeWidth={sw} opacity={0.5} />
+          )}
+        </>
+      )
+    }
+
     if (!ghostShape || svgTransform.scale === 0) return null
     const { startImgX, startImgY, currentImgX, currentImgY, shape, color, freehandPoints } = ghostShape
     const dx = currentImgX - startImgX

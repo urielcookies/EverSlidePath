@@ -579,13 +579,14 @@ export default function LeftSidebar() {
                   {/* Shape picker */}
                   <div className="space-y-1.5">
                     <span className="pv-label text-[10px]">Shape</span>
-                    <div className="grid grid-cols-4 gap-1">
+                    <div className="grid grid-cols-5 gap-1">
                       {(
                         [
                           { id: 'circle' as const,   icon: <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.5" /> },
                           { id: 'square' as const,   icon: <rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" /> },
                           { id: 'pin' as const,      icon: <><circle cx="7" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M7 8v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></> },
                           { id: 'freehand' as const, icon: <path d="M2 11 Q4 3 7 7 Q10 11 12 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /> },
+                          { id: 'polygon' as const,  icon: <polygon points="7,2 12,6 10,12 4,12 2,6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /> },
                         ]
                       ).map(({ id, icon }) => {
                         const active = annotationShape === id
