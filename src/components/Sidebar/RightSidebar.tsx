@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { SlideMetadata } from '../../server/slideMetadata'
 import { usePathologyStore, removeAnnotation, setHoveredAnnotation } from '../../store/pathologyStore'
 import { getViewerInstance } from '../../lib/viewerInstance'
 import { ANNOTATION_LABELS } from '../../lib/annotationConfig'
+import CaseContextPanel from '../Viewer/CaseContextPanel'
 
 
 interface Props {
@@ -35,10 +36,20 @@ function TrashIcon() {
   )
 }
 
-type Tab = 'analysis' | 'report'
+type Tab = 'analysis' | 'report' | 'case'
 
 export default function RightSidebar({ metadata }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('analysis')
+  const activeCase = usePathologyStore((s) => s.activeCase)
+
+  // Auto-switch to Case tab when a case loads; revert when it clears
+  useEffect(() => {
+    if (activeCase) {
+      setActiveTab('case')
+    } else {
+      setActiveTab((prev) => (prev === 'case' ? 'analysis' : prev))
+    }
+  }, [activeCase])
 
   const annotations = usePathologyStore((s) => s.annotations)
   const hoveredAnnotationId = usePathologyStore((s) => s.hoveredAnnotationId)
@@ -135,6 +146,22 @@ export default function RightSidebar({ metadata }: Props) {
             )}
           </button>
         ))}
+        {activeCase && (
+          <button
+            onClick={() => setActiveTab('case')}
+            className={`flex-1 py-2 text-[11px] font-medium tracking-widest uppercase transition-colors relative ${
+              activeTab === 'case' ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Case
+            {activeTab === 'case' && (
+              <motion.div
+                layoutId="tab-indicator"
+                className="absolute bottom-0 left-0 right-0 h-px bg-cyan-400"
+              />
+            )}
+          </button>
+        )}
       </div>
 
       {/* ── Analysis Tab ───────────────────────────────────────────────────── */}
@@ -427,6 +454,19 @@ export default function RightSidebar({ metadata }: Props) {
                 </button>
               </div>
             )}
+          </motion.div>
+        )}
+        {/* ── Case Tab ───────────────────────────────────────────────────────── */}
+        {activeTab === 'case' && activeCase && (
+          <motion.div
+            key="case"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="flex flex-col overflow-y-auto flex-1"
+          >
+            <CaseContextPanel />
           </motion.div>
         )}
       </AnimatePresence>
