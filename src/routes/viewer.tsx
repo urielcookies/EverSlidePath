@@ -5,6 +5,7 @@ import { getSlideMetadata, fetchUploadedSlidesFn } from '../server/slideMetadata
 import type { SlideMetadata } from '../server/slideMetadata'
 import { getAnnotationsFn, saveAnnotationsFn } from '../server/annotationFunctions'
 import { getCaseFn } from '../server/caseFunctions'
+import { upsertProgressFn } from '../server/progressFunctions'
 import LeftSidebar from '../components/Sidebar/LeftSidebar'
 import RightSidebar from '../components/Sidebar/RightSidebar'
 import PathologyViewer from '../components/Viewer/PathologyViewer'
@@ -29,6 +30,7 @@ export const Route = createFileRoute('/viewer')({
   validateSearch: (search: Record<string, unknown>) => ({
     slide: typeof search.slide === 'string' ? search.slide : undefined,
     case: typeof search.case === 'string' ? search.case : undefined,
+    caseSet: typeof search.caseSet === 'string' ? search.caseSet : undefined,
   }),
   loader: async () => ({}),
   component: ViewerPage,
@@ -203,7 +205,7 @@ function ViewerPage() {
   const aiInferenceTime = usePathologyStore((s) => s.aiInferenceTime)
   const aiThreshold = usePathologyStore((s) => s.aiThreshold)
 
-  const { slide: slideParam, case: caseParam } = Route.useSearch()
+  const { slide: slideParam, case: caseParam, caseSet: caseSetParam } = Route.useSearch()
   const navigate = useNavigate({ from: '/viewer' })
   const authUser = useAuthStore((s) => s.user)
 
@@ -251,6 +253,14 @@ function ViewerPage() {
       .then((c) => setActiveCase(c))
       .catch(() => setActiveCase(null))
   }, [caseParam]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track student progress — mark in_progress when a student opens a case
+  useEffect(() => {
+    if (!caseParam || !authUser || authUser.role !== 'student') return
+    upsertProgressFn({
+      data: { caseId: caseParam, caseSetId: caseSetParam ?? null },
+    }).catch(() => {})
+  }, [caseParam, authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch persisted slides from D1 on mount
   useEffect(() => {

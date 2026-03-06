@@ -8,6 +8,16 @@ import {
   deleteCaseFn,
 } from '../server/caseFunctions'
 import type { Case } from '../server/caseFunctions'
+import {
+  listCaseSetsFn,
+  createCaseSetFn,
+  addCaseToCaseSetFn,
+  removeCaseFromCaseSetFn,
+  reorderCaseSetFn,
+  deleteCaseSetFn,
+  getCaseSetWithCasesFn,
+} from '../server/caseSetFunctions'
+import type { CaseSet, CaseSetWithCases } from '../server/caseSetFunctions'
 import { fetchUploadedSlidesFn } from '../server/slideMetadata'
 import type { SlideMetadata } from '../server/slideMetadata'
 import { LIBRARY_SLIDES } from '../lib/slideLibrary'
@@ -395,6 +405,280 @@ function CaseRow({
   )
 }
 
+// ─── Class code generator ─────────────────────────────────────────────────────
+
+const ADJECTIVES = ['silver','crimson','amber','cobalt','emerald','violet','golden','scarlet','azure','ivory']
+const NOUNS      = ['lung','heart','liver','kidney','colon','thyroid','breast','prostate','brain','skin']
+
+function generateClassCode(): string {
+  const adj  = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+  const num  = String(Math.floor(Math.random() * 9000) + 1000)
+  return `${adj}-${noun}-${num}`
+}
+
+// ─── CreateCaseSetForm ────────────────────────────────────────────────────────
+
+function CreateCaseSetForm({ onCreated }: { onCreated: (cs: CaseSet) => void }) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [classCode, setClassCode] = useState(() => generateClassCode())
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) return
+    setSaving(true)
+    try {
+      const result = await createCaseSetFn({ data: { title, description, class_code: classCode } })
+      if (!result.ok || !result.caseSet) { toast.error(result.error ?? 'Failed'); return }
+      toast.success('Course created')
+      onCreated(result.caseSet)
+      setTitle('')
+      setDescription('')
+      setClassCode(generateClassCode())
+    } catch {
+      toast.error('Failed to create course')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="block text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Course Title</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            placeholder="e.g. Pulmonary Pathology Block"
+            className="w-full rounded-md px-3 py-2 text-xs text-slate-200 bg-slate-800/60 border border-slate-700/60 outline-none focus:border-cyan-500/50 transition-colors placeholder:text-slate-600"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Class Code</label>
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={classCode}
+              onChange={(e) => setClassCode(e.target.value.toLowerCase())}
+              required
+              className="flex-1 rounded-md px-3 py-2 text-xs text-slate-200 bg-slate-800/60 border border-slate-700/60 outline-none focus:border-cyan-500/50 transition-colors font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setClassCode(generateClassCode())}
+              title="Regenerate code"
+              className="rounded-md px-2 text-slate-500 hover:text-slate-300 border border-slate-700/60 bg-slate-800/40 transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <path d="M2 6a4 4 0 0 1 7-2.6M2 3.4V6h2.6M10 6a4 4 0 0 1-7 2.6M10 8.6V6H7.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+          <p className="mt-1 text-[10px] text-slate-600">Share this code with your students.</p>
+        </div>
+      </div>
+      <div>
+        <label className="block text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">Description <span className="normal-case text-slate-700">(optional)</span></label>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Brief description of this course module"
+          className="w-full rounded-md px-3 py-2 text-xs text-slate-200 bg-slate-800/60 border border-slate-700/60 outline-none focus:border-cyan-500/50 transition-colors placeholder:text-slate-600"
+        />
+      </div>
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={saving || !title.trim()}
+          className="flex items-center gap-1.5 rounded-md px-4 py-2 text-xs font-semibold text-[#020617] transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: '#22d3ee' }}
+        >
+          {saving ? 'Creating…' : 'Create Course'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// ─── CaseSetBuilder ───────────────────────────────────────────────────────────
+
+function CaseSetBuilder({
+  caseSet,
+  allCases,
+  onDeleted,
+}: {
+  caseSet: CaseSetWithCases
+  allCases: Case[]
+  onDeleted: (id: string) => void
+}) {
+  const [cases, setCases] = useState(caseSet.cases as Case[])
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const caseIdsInSet = new Set(cases.map((c) => c.id))
+  const availableCases = allCases.filter((c) => !caseIdsInSet.has(c.id))
+
+  const handleAdd = async (caseId: string) => {
+    setSaving(true)
+    try {
+      const result = await addCaseToCaseSetFn({ data: { caseSetId: caseSet.id, caseId } })
+      if (!result.ok) { toast.error(result.error ?? 'Failed'); return }
+      const added = allCases.find((c) => c.id === caseId)
+      if (added) setCases((prev) => [...prev, added])
+      toast.success('Case added')
+    } catch {
+      toast.error('Failed to add case')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRemove = async (caseId: string) => {
+    setSaving(true)
+    try {
+      const result = await removeCaseFromCaseSetFn({ data: { caseSetId: caseSet.id, caseId } })
+      if (!result.ok) { toast.error(result.error ?? 'Failed'); return }
+      setCases((prev) => prev.filter((c) => c.id !== caseId))
+      toast.success('Case removed')
+    } catch {
+      toast.error('Failed to remove case')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleMoveUp = async (idx: number) => {
+    if (idx === 0) return
+    const reordered = [...cases]
+    ;[reordered[idx - 1], reordered[idx]] = [reordered[idx], reordered[idx - 1]]
+    setCases(reordered)
+    await reorderCaseSetFn({ data: { caseSetId: caseSet.id, orderedCaseIds: reordered.map((c) => c.id) } }).catch(() => {})
+  }
+
+  const handleMoveDown = async (idx: number) => {
+    if (idx === cases.length - 1) return
+    const reordered = [...cases]
+    ;[reordered[idx], reordered[idx + 1]] = [reordered[idx + 1], reordered[idx]]
+    setCases(reordered)
+    await reorderCaseSetFn({ data: { caseSetId: caseSet.id, orderedCaseIds: reordered.map((c) => c.id) } }).catch(() => {})
+  }
+
+  const handleDeleteSet = async () => {
+    if (!window.confirm(`Delete course "${caseSet.title}"? Cases will not be deleted.`)) return
+    setDeleting(true)
+    try {
+      const result = await deleteCaseSetFn({ data: caseSet.id })
+      if (!result.ok) { toast.error(result.error ?? 'Failed'); return }
+      onDeleted(caseSet.id)
+      toast.success('Course deleted')
+    } catch {
+      toast.error('Failed to delete course')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: '1px solid rgba(148,163,184,0.1)' }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-5 py-3"
+        style={{ background: 'rgba(15,23,42,0.95)' }}
+      >
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-100">{caseSet.title}</span>
+            <span className="font-mono text-[10px] text-slate-500 bg-slate-800/60 rounded px-1.5 py-px border border-slate-700/40">
+              {caseSet.class_code}
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-600">{cases.length} cases</span>
+        </div>
+        <button
+          onClick={handleDeleteSet}
+          disabled={deleting}
+          className="text-[11px] text-red-500/60 hover:text-red-400 transition-colors border border-red-500/20 hover:border-red-400/30 rounded px-2 py-1 disabled:opacity-50"
+        >
+          {deleting ? '…' : 'Delete course'}
+        </button>
+      </div>
+
+      {/* Cases in set */}
+      <div className="border-t border-slate-800/60" style={{ background: 'rgba(10,16,38,0.5)' }}>
+        {cases.length === 0 ? (
+          <p className="px-5 py-4 text-xs text-slate-600 italic">No cases added yet.</p>
+        ) : (
+          cases.map((c, idx) => (
+            <div
+              key={c.id}
+              className="flex items-center gap-3 px-5 py-2.5 border-b border-slate-800/40 last:border-0"
+            >
+              {/* Reorder arrows */}
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={() => handleMoveUp(idx)}
+                  disabled={idx === 0 || saving}
+                  className="text-slate-700 hover:text-slate-400 disabled:opacity-20 transition-colors"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 6.5l3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handleMoveDown(idx)}
+                  disabled={idx === cases.length - 1 || saving}
+                  className="text-slate-700 hover:text-slate-400 disabled:opacity-20 transition-colors"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 3.5l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              <span className="font-mono text-[10px] text-slate-600 w-5 text-right">{idx + 1}</span>
+              <span className="flex-1 text-xs text-slate-300 truncate">{c.title}</span>
+              <button
+                onClick={() => handleRemove(c.id)}
+                disabled={saving}
+                className="text-[10px] text-slate-600 hover:text-red-400 transition-colors disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          ))
+        )}
+
+        {/* Add case picker */}
+        {availableCases.length > 0 && (
+          <div className="px-5 py-3 border-t border-slate-800/40">
+            <div className="flex gap-2">
+              <select
+                defaultValue=""
+                onChange={(e) => { if (e.target.value) { handleAdd(e.target.value); e.target.value = '' } }}
+                disabled={saving}
+                className="flex-1 rounded px-2 py-1.5 text-xs text-slate-300 bg-slate-800/60 border border-slate-700/60 outline-none focus:border-cyan-500/50 disabled:opacity-50"
+              >
+                <option value="">+ Add a case…</option>
+                {availableCases.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── InstructorPage ───────────────────────────────────────────────────────────
 
 function InstructorPage() {
@@ -402,10 +686,14 @@ function InstructorPage() {
   const user = useAuthStore((s) => s.user)
   const status = useAuthStore((s) => s.status)
 
+  const [activeTab, setActiveTab] = useState<'cases' | 'courses'>('cases')
   const [cases, setCases] = useState<Case[]>([])
+  const [caseSets, setCaseSets] = useState<CaseSetWithCases[]>([])
   const [slides, setSlides] = useState<SlideOption[]>([])
   const [loadingCases, setLoadingCases] = useState(true)
+  const [loadingCourses, setLoadingCourses] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showCreateSetForm, setShowCreateSetForm] = useState(false)
 
   // Redirect non-instructors
   useEffect(() => {
@@ -420,6 +708,23 @@ function InstructorPage() {
       .then((cs) => setCases(cs as Case[]))
       .catch(() => setCases([]))
       .finally(() => setLoadingCases(false))
+  }, [status])
+
+  // Load case sets
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const load = async () => {
+      try {
+        const sets = await listCaseSetsFn()
+        const setsWithCases = await Promise.all(sets.map((s) => getCaseSetWithCasesFn({ data: s.id })))
+        setCaseSets(setsWithCases.filter((s): s is CaseSetWithCases => s !== null))
+      } catch {
+        setCaseSets([])
+      } finally {
+        setLoadingCourses(false)
+      }
+    }
+    load()
   }, [status])
 
   // Load slides (library + uploaded)
@@ -491,90 +796,159 @@ function InstructorPage() {
         </div>
       </nav>
 
+      {/* Tabs */}
+      <div className="border-b border-slate-800/60" style={{ background: 'rgba(2,6,23,0.8)' }}>
+        <div className="mx-auto max-w-4xl px-6 flex gap-0">
+          {(['cases', 'courses'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-3 text-xs font-medium tracking-wide uppercase transition-colors relative ${
+                activeTab === tab ? 'text-cyan-400' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {tab === 'cases' ? `Cases (${cases.length})` : `Courses (${caseSets.length})`}
+              {activeTab === tab && (
+                <span className="absolute bottom-0 left-0 right-0 h-px bg-cyan-400" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <main className="mx-auto max-w-4xl px-6 py-10 space-y-8">
 
-        {/* Create case panel */}
-        <div
-          className="rounded-xl overflow-hidden"
-          style={{ border: '1px solid rgba(148,163,184,0.1)' }}
-        >
-          <button
-            onClick={() => setShowCreateForm((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-slate-800/20"
-            style={{ background: 'rgba(15,23,42,0.9)' }}
-          >
-            <div className="flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#22d3ee" strokeWidth="1.5">
-                <path d="M7 2v10M2 7h10" strokeLinecap="round" />
-              </svg>
-              <span className="text-sm font-semibold text-slate-100">New Case</span>
-            </div>
-            <svg
-              width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#64748b" strokeWidth="1.5"
-              className={`transition-transform ${showCreateForm ? 'rotate-180' : ''}`}
-            >
-              <path d="M3 5l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-
-          {showCreateForm && (
-            <div className="px-5 py-4 border-t border-slate-800/60" style={{ background: 'rgba(15,23,42,0.6)' }}>
-              <CreateCaseForm
-                slides={slides}
-                onCreated={(c) => {
-                  setCases((prev) => [c, ...prev])
-                  setShowCreateForm(false)
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Case list */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-slate-200">
-              Your Cases
-              {cases.length > 0 && (
-                <span className="ml-2 font-mono text-[11px] text-slate-600">{cases.length}</span>
+        {/* ── Cases tab ─────────────────────────────────────────────────────── */}
+        {activeTab === 'cases' && (
+          <>
+            {/* Create case panel */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(148,163,184,0.1)' }}>
+              <button
+                onClick={() => setShowCreateForm((v) => !v)}
+                className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-slate-800/20"
+                style={{ background: 'rgba(15,23,42,0.9)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#22d3ee" strokeWidth="1.5">
+                    <path d="M7 2v10M2 7h10" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-sm font-semibold text-slate-100">New Case</span>
+                </div>
+                <svg
+                  width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#64748b" strokeWidth="1.5"
+                  className={`transition-transform ${showCreateForm ? 'rotate-180' : ''}`}
+                >
+                  <path d="M3 5l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {showCreateForm && (
+                <div className="px-5 py-4 border-t border-slate-800/60" style={{ background: 'rgba(15,23,42,0.6)' }}>
+                  <CreateCaseForm
+                    slides={slides}
+                    onCreated={(c) => { setCases((prev) => [c, ...prev]); setShowCreateForm(false) }}
+                  />
+                </div>
               )}
-            </h2>
-            <div className="flex items-center gap-3 text-[10px] font-mono text-slate-600">
-              <span>{cases.filter((c) => c.is_published).length} published</span>
-              <span>{cases.filter((c) => !c.is_published).length} draft</span>
             </div>
-          </div>
 
-          {loadingCases ? (
-            <div className="flex items-center justify-center py-16">
-              <span className="text-xs text-slate-600 font-mono animate-pulse">Loading cases…</span>
+            {/* Case list */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-slate-200">
+                  Your Cases
+                  {cases.length > 0 && <span className="ml-2 font-mono text-[11px] text-slate-600">{cases.length}</span>}
+                </h2>
+                <div className="flex items-center gap-3 text-[10px] font-mono text-slate-600">
+                  <span>{cases.filter((c) => c.is_published).length} published</span>
+                  <span>{cases.filter((c) => !c.is_published).length} draft</span>
+                </div>
+              </div>
+
+              {loadingCases ? (
+                <div className="flex items-center justify-center py-16">
+                  <span className="text-xs text-slate-600 font-mono animate-pulse">Loading cases…</span>
+                </div>
+              ) : cases.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl py-16 text-center" style={{ border: '1px dashed rgba(148,163,184,0.12)' }}>
+                  <p className="text-sm text-slate-500 mb-1">No cases yet</p>
+                  <p className="text-xs text-slate-700">Create your first case above.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cases.map((c) => (
+                    <CaseRow
+                      key={c.id}
+                      c={c}
+                      slides={slides}
+                      onUpdated={(updated) => setCases((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
+                      onDeleted={(id) => setCases((prev) => prev.filter((x) => x.id !== id))}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          ) : cases.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center rounded-xl py-16 text-center"
-              style={{ border: '1px dashed rgba(148,163,184,0.12)' }}
-            >
-              <p className="text-sm text-slate-500 mb-1">No cases yet</p>
-              <p className="text-xs text-slate-700">Create your first case above.</p>
+          </>
+        )}
+
+        {/* ── Courses tab ───────────────────────────────────────────────────── */}
+        {activeTab === 'courses' && (
+          <>
+            {/* Create course panel */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(148,163,184,0.1)' }}>
+              <button
+                onClick={() => setShowCreateSetForm((v) => !v)}
+                className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-slate-800/20"
+                style={{ background: 'rgba(15,23,42,0.9)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#22d3ee" strokeWidth="1.5">
+                    <path d="M7 2v10M2 7h10" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-sm font-semibold text-slate-100">New Course</span>
+                </div>
+                <svg
+                  width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#64748b" strokeWidth="1.5"
+                  className={`transition-transform ${showCreateSetForm ? 'rotate-180' : ''}`}
+                >
+                  <path d="M3 5l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {showCreateSetForm && (
+                <div className="px-5 py-4 border-t border-slate-800/60" style={{ background: 'rgba(15,23,42,0.6)' }}>
+                  <CreateCaseSetForm
+                    onCreated={(cs) => {
+                      setCaseSets((prev) => [{ ...cs, cases: [] }, ...prev])
+                      setShowCreateSetForm(false)
+                    }}
+                  />
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="space-y-3">
-              {cases.map((c) => (
-                <CaseRow
-                  key={c.id}
-                  c={c}
-                  slides={slides}
-                  onUpdated={(updated) =>
-                    setCases((prev) =>
-                      prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))
-                    )
-                  }
-                  onDeleted={(id) => setCases((prev) => prev.filter((x) => x.id !== id))}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+
+            {/* Course list */}
+            {loadingCourses ? (
+              <div className="flex items-center justify-center py-16">
+                <span className="text-xs text-slate-600 font-mono animate-pulse">Loading courses…</span>
+              </div>
+            ) : caseSets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-xl py-16 text-center" style={{ border: '1px dashed rgba(148,163,184,0.12)' }}>
+                <p className="text-sm text-slate-500 mb-1">No courses yet</p>
+                <p className="text-xs text-slate-700">Create a course to group cases and assign them to a class.</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {caseSets.map((cs) => (
+                  <CaseSetBuilder
+                    key={cs.id}
+                    caseSet={cs}
+                    allCases={cases}
+                    onDeleted={(id) => setCaseSets((prev) => prev.filter((x) => x.id !== id))}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </main>
     </div>
   )
